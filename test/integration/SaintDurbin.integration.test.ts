@@ -2,10 +2,10 @@ import { describe, it, before, beforeEach } from "mocha";
 import { expect } from "chai";
 import { ethers } from "ethers";
 import { devnet } from "../../subtensor_chain/evm-tests/.papi/descriptors/dist"
-import { getAliceSigner, getDevnetApi, getRandomSubstrateKeypair, getSignerFromKeypair, waitForTransactionWithRetry } from "../../subtensor_chain/evm-tests/src/substrate";
+import { getAliceSigner, getDevnetApi, getRandomSubstrateKeypair, waitForTransactionWithRetry } from "../../subtensor_chain/evm-tests/src/substrate";
 import { TypedApi } from "polkadot-api";
-import { convertH160ToPublicKey, convertH160ToSS58, convertPublicKeyToSs58, ethAddressToH160 } from "../../subtensor_chain/evm-tests/src/address-utils";
-import { raoToEth, TAO, tao } from "../../subtensor_chain/evm-tests/src/balance-math";
+import { convertH160ToPublicKey, convertH160ToSS58, convertPublicKeyToSs58 } from "../../subtensor_chain/evm-tests/src/address-utils";
+import { tao } from "../../subtensor_chain/evm-tests/src/balance-math";
 import {
     forceSetBalanceToSs58Address,
     forceSetBalanceToEthAddress,
@@ -40,17 +40,17 @@ async function swapColdkey(api: TypedApi<typeof devnet>, coldkey: KeyPair, contr
     await waitForTransactionWithRetry(api, tx, alice)
 }
 
-async function transferStake(api: TypedApi<typeof devnet>, netuid: number, destination_coldkey: string, hotkey: string, alpha_amount: bigint, keypair: KeyPair) {
-    const signer = getSignerFromKeypair(keypair)
-    let tx = api.tx.SubtensorModule.transfer_stake({
-        destination_coldkey,
-        hotkey,
-        origin_netuid: netuid,
-        destination_netuid: netuid,
-        alpha_amount,
+// Set target registrations per interval to 100
+async function setTargetRegistrationsPerInterval(api: TypedApi<typeof devnet>, netuid: number) {
+    const alice = getAliceSigner()
+    const internal_tx = api.tx.AdminUtils.sudo_set_target_registrations_per_interval({
+        netuid,
+        target_registrations_per_interval: 100,
     })
-
-    await waitForTransactionWithRetry(api, tx, signer)
+    const tx = api.tx.Sudo.sudo({
+        call: internal_tx.decodedCall
+    })
+    await waitForTransactionWithRetry(api, tx, alice)
 }
 
 describe("SaintDurbin Live Integration Tests", () => {
@@ -64,8 +64,11 @@ describe("SaintDurbin Live Integration Tests", () => {
     const emergencyOperator = generateRandomEthersWallet();
     const validator1Hotkey = getRandomSubstrateKeypair();
     const validator1Coldkey = getRandomSubstrateKeypair();
-    const validator2Hotkey = getRandomSubstrateKeypair();
-    const validator2Coldkey = getRandomSubstrateKeypair();
+
+    // 5 validators
+    const validatorHotkeys = [getRandomSubstrateKeypair(), getRandomSubstrateKeypair(), getRandomSubstrateKeypair(), getRandomSubstrateKeypair(), getRandomSubstrateKeypair()];
+    const validatorColdkeys = [getRandomSubstrateKeypair(), getRandomSubstrateKeypair(), getRandomSubstrateKeypair(), getRandomSubstrateKeypair(), getRandomSubstrateKeypair()];
+
     const contractColdkey = getRandomSubstrateKeypair();
     const drainAddress = getRandomSubstrateKeypair();
     // used to add stake after coldkey swap
@@ -110,10 +113,13 @@ describe("SaintDurbin Live Integration Tests", () => {
         await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(validator1Hotkey.publicKey));
         console.log("Funding validator1Coldkey...");
         await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(validator1Coldkey.publicKey));
-        console.log("Funding validator2Hotkey...");
-        await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(validator2Hotkey.publicKey));
-        console.log("Funding validator2Coldkey...");
-        await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(validator2Coldkey.publicKey));
+        for (let i = 0; i < validatorHotkeys.length; i++) {
+            await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(validatorHotkeys[i].publicKey));
+        }
+
+        for (let i = 0; i < validatorColdkeys.length; i++) {
+            await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(validatorColdkeys[i].publicKey));
+        }
         console.log("Funding contractColdkey...");
         await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(contractColdkey.publicKey));
         console.log("Funding emergencyOperator...");
@@ -131,18 +137,24 @@ describe("SaintDurbin Live Integration Tests", () => {
         console.log(`Subnet created with netuid: ${netuid}`);
 
         await startCall(api, netuid, validator1Coldkey)
+        await setTargetRegistrationsPerInterval(api, netuid)
+        // Set max allowed validators to enable validator permits
+        console.log("Setting max allowed validators...");
+        await setMaxAllowedValidators(api, netuid, 10);
 
         // Register validators
         console.log("Registering validator1...");
         await burnedRegister(api, netuid, convertPublicKeyToSs58(validator1Hotkey.publicKey), validator1Coldkey);
-        console.log("Registering validator2...");
-        await burnedRegister(api, netuid, convertPublicKeyToSs58(validator2Hotkey.publicKey), validator2Coldkey);
 
-        // Set max allowed validators to enable validator permits
-        console.log("Setting max allowed validators...");
-        await setMaxAllowedValidators(api, netuid, 2);
+        for (let i = 0; i < validatorHotkeys.length; i++) {
+            await burnedRegister(api, netuid, convertPublicKeyToSs58(validatorHotkeys[i].publicKey), validatorColdkeys[i]);
+        }
 
         await addStake(api, netuid, convertPublicKeyToSs58(validator1Hotkey.publicKey), tao(10000), contractColdkey);
+
+        for (let i = 0; i < validatorHotkeys.length; i++) {
+            await addStake(api, netuid, convertPublicKeyToSs58(validatorHotkeys[i].publicKey), tao(i + 1), contractColdkey);
+        }
 
         console.log(`Test setup complete. Netuid: ${netuid}`);
     });
@@ -184,13 +196,8 @@ describe("SaintDurbin Live Integration Tests", () => {
             expect(await saintDurbin.getRecipientCount()).to.equal(BigInt(16));
 
             const stakedBalanceOnChain = await stakeContract.getStake(validator1Hotkey.publicKey, contractColdkey.publicKey, netuid)
-
-            console.log("stake from chain is ", stakedBalanceOnChain)
-
             // Check initial balance
             const stakedBalance = await saintDurbin.getStakedBalance();
-            console.log("stake from contract is ", stakedBalance)
-
             expect(stakedBalance).to.be.gt(0);
             // may have difference since run coinbase
             // expect(await saintDurbin.principalLocked()).to.equal(stakedBalance);
@@ -203,7 +210,6 @@ describe("SaintDurbin Live Integration Tests", () => {
             // fund contract
             await forceSetBalanceToEthAddress(api, contractAddress)
             const contractSs58Address = convertH160ToSS58(contractAddress)
-            console.log(convertH160ToPublicKey(contractSs58Address))
 
             const tx = await saintDurbin.setThisSs58PublicKey(convertH160ToPublicKey(contractAddress))
             await tx.wait()
@@ -237,7 +243,6 @@ describe("SaintDurbin Live Integration Tests", () => {
                     return false;
                 }
             });
-
             expect(transferEvents.length).to.be.gt(0);
 
             // Verify recipients received funds
@@ -252,40 +257,6 @@ describe("SaintDurbin Live Integration Tests", () => {
         it("Should switch validators when current validator loses permit", async function () {
             this.timeout(60000);
 
-            // For this test we'll need to simulate validator losing permit
-            // This would require more complex setup, so we'll simplify
-
-            const uid1 = await api.query.SubtensorModule.Uids.getValue(netuid, convertPublicKeyToSs58(validator1Hotkey.publicKey));
-            const uid2 = await api.query.SubtensorModule.Uids.getValue(netuid, convertPublicKeyToSs58(validator2Hotkey.publicKey));
-            if (uid1 === undefined || uid2 == undefined) {
-                throw new Error("Value of uid is undefined");
-            }
-
-            // stake much more and set max validator as 1
-            await forceSetBalanceToSs58Address(api, convertPublicKeyToSs58(secondColdkey.publicKey))
-            await addStake(api, netuid, convertPublicKeyToSs58(validator2Hotkey.publicKey), tao(100000), secondColdkey);
-            await setMaxAllowedValidators(api, netuid, 1)
-
-            while (true) {
-                const current = await saintDurbin.getCurrentValidatorInfo();
-                const currentUid = current[1];
-                const currentActive = current[2];
-                console.log(" ", currentUid, currentActive)
-                const permit = await api.query.SubtensorModule.ValidatorPermit.getValue(netuid);
-                const active = await api.query.SubtensorModule.Active.getValue(netuid)
-
-                console.log("Permit and Active status: ", uid1, uid2, permit[uid1], permit[uid2], active[uid1], active[uid2])
-
-                // TODO currently the permit not upated for each epoch.
-                // until current validator lost permit
-                if (!permit[currentUid]) {
-                    break;
-                }
-                await new Promise(resolve => setTimeout(resolve, 6000)); // Sleep for 6 seconds
-                console.log("Waiting for 6 second for current validator lost permit")
-            }
-
-            // Trigger validator check
             const tx = await saintDurbin.checkAndSwitchValidator();
             const receipt = await tx.wait();
 
@@ -303,7 +274,8 @@ describe("SaintDurbin Live Integration Tests", () => {
 
             // Verify new validator
             const newValidatorHotkey = await saintDurbin.currentValidatorHotkey();
-            expect(newValidatorHotkey).to.equal(ethers.hexlify(validator2Hotkey.publicKey));
+            expect(newValidatorHotkey).to.equal(ethers.hexlify(validatorHotkeys[4].publicKey));
+
         });
     });
 
@@ -344,10 +316,6 @@ describe("SaintDurbin Live Integration Tests", () => {
             this.timeout(60000);
 
             const initialPrincipal = await saintDurbin.principalLocked();
-
-            // after coldkey swap, there is no fund in contractColdkey. we can still test it by check canExecute
-            // Add more stake (simulating principal addition)
-            // await addStake(api, netuid, convertPublicKeyToSs58(validator1Hotkey.publicKey), tao(5000), contractColdkey);
 
             let canExecute = await saintDurbin.canExecuteTransfer();
             while (!canExecute) {

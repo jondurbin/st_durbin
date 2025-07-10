@@ -18,6 +18,7 @@ contract SaintDurbin {
     uint256 constant BASIS_POINTS = 10000;
     uint256 constant RATE_MULTIPLIER_THRESHOLD = 2;
     uint256 constant EMERGENCY_TIMELOCK = 86400; // 24 hours timelock for emergency drain
+    uint256 constant MIN_UID_COUNT_FOR_SWITCH = 6; // current validator and top 5 validators
 
     // ========== State Variables ==========
 
@@ -180,10 +181,12 @@ contract SaintDurbin {
     function executeTransfer() external nonReentrant {
         if (!canExecuteTransfer()) revert TransferTooSoon();
 
+        // After change swtich to an always execution, should comment this out
+        // Since there is no permit check. and avoid the stake opeartion limit.
         // Check and switch validator if needed (every 100 blocks ~ 20 minutes)
-        if (block.number >= lastValidatorCheckBlock + 100) {
-            _checkAndSwitchValidator();
-        }
+        // if (block.number >= lastValidatorCheckBlock + 100) {
+        //     _checkAndSwitchValidator();
+        // }
 
         uint256 currentBalance = _getStakedBalance();
         uint256 availableYield;
@@ -317,63 +320,65 @@ contract SaintDurbin {
      */
     function _checkAndSwitchValidator() internal {
         lastValidatorCheckBlock = block.number;
+        _switchToNewValidator("Select a new validator");
+        return;
 
-        (bool success, bytes memory returnData) = address(metagraph).staticcall(
-            abi.encodeWithSelector(
-                IMetagraph.getValidatorStatus.selector,
-                netuid,
-                currentValidatorUid
-            )
-        );
-        if (!success) {
-            emit ValidatorCheckFailed("Failed to check validator status");
-            return;
-        }
-        bool isValidator = abi.decode(returnData, (bool));
-        if (!isValidator) {
-            // Current validator lost permit, find new one
-            _switchToNewValidator("Validator lost permit");
-            return;
-        }
+        // (bool success, bytes memory returnData) = address(metagraph).staticcall(
+        //     abi.encodeWithSelector(
+        //         IMetagraph.getValidatorStatus.selector,
+        //         netuid,
+        //         currentValidatorUid
+        //     )
+        // );
+        // if (!success) {
+        //     emit ValidatorCheckFailed("Failed to check validator status");
+        //     return;
+        // }
+        // bool isValidator = abi.decode(returnData, (bool));
+        // if (!isValidator) {
+        //     // Current validator lost permit, find new one
+        //     _switchToNewValidator("Validator lost permit");
+        //     return;
+        // }
 
-        // Also check if the UID still has the same hotkey
-        (success, returnData) = address(metagraph).staticcall(
-            abi.encodeWithSelector(
-                IMetagraph.getHotkey.selector,
-                netuid,
-                currentValidatorUid
-            )
-        );
-        if (!success) {
-            emit ValidatorCheckFailed("Failed to check UID hotkey");
-            return;
-        }
-        bytes32 uidHotkey = abi.decode(returnData, (bytes32));
-        if (uidHotkey != currentValidatorHotkey) {
-            // UID has different hotkey, need to find new validator
-            _switchToNewValidator("Validator UID hotkey mismatch");
-            return;
-        }
+        // // Also check if the UID still has the same hotkey
+        // (success, returnData) = address(metagraph).staticcall(
+        //     abi.encodeWithSelector(
+        //         IMetagraph.getHotkey.selector,
+        //         netuid,
+        //         currentValidatorUid
+        //     )
+        // );
+        // if (!success) {
+        //     emit ValidatorCheckFailed("Failed to check UID hotkey");
+        //     return;
+        // }
+        // bytes32 uidHotkey = abi.decode(returnData, (bytes32));
+        // if (uidHotkey != currentValidatorHotkey) {
+        //     // UID has different hotkey, need to find new validator
+        //     _switchToNewValidator("Validator UID hotkey mismatch");
+        //     return;
+        // }
 
-        // Check if validator is still active
-        (success, returnData) = address(metagraph).staticcall(
-            abi.encodeWithSelector(
-                IMetagraph.getIsActive.selector,
-                netuid,
-                currentValidatorUid
-            )
-        );
-        if (!success) {
-            emit ValidatorCheckFailed(
-                "Failed to check validator active status"
-            );
-            return;
-        }
-        bool isActive = abi.decode(returnData, (bool));
-        if (!isActive) {
-            _switchToNewValidator("Validator is inactive");
-            return;
-        }
+        // // Check if validator is still active
+        // (success, returnData) = address(metagraph).staticcall(
+        //     abi.encodeWithSelector(
+        //         IMetagraph.getIsActive.selector,
+        //         netuid,
+        //         currentValidatorUid
+        //     )
+        // );
+        // if (!success) {
+        //     emit ValidatorCheckFailed(
+        //         "Failed to check validator active status"
+        //     );
+        //     return;
+        // }
+        // bool isActive = abi.decode(returnData, (bool));
+        // if (!isActive) {
+        //     _switchToNewValidator("Validator is inactive");
+        //     return;
+        // }
     }
 
     /**
@@ -392,14 +397,24 @@ contract SaintDurbin {
             emit ValidatorCheckFailed("Failed to get UID count");
             return;
         }
+
         uidCount = abi.decode(returnData, (uint16));
+        if (uidCount < MIN_UID_COUNT_FOR_SWITCH) {
+            emit ValidatorCheckFailed("Not enough UIDs to choose for switch");
+            return;
+        }
 
         uint16 bestUid = 0;
         bytes32 bestHotkey = bytes32(0);
         uint256 bestScore = 0;
         bool foundValid = false;
+        uint16[] memory topUids = new uint16[](5);
+        uint16 topUidCount = 0;
+        uint64 currentMinStake = 0;
 
         for (uint16 uid = 0; uid < uidCount; uid++) {
+            if (uid == currentValidatorUid) continue;
+
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
                     IMetagraph.getValidatorStatus.selector,
@@ -433,36 +448,59 @@ contract SaintDurbin {
             if (!success) continue;
             uint64 stake = abi.decode(returnData, (uint64));
 
+            if (topUidCount < 5) {
+                topUids[topUidCount] = uid;
+                topUidCount++;
+            } else {
+                currentMinStake = topUids[0];
+                uint16 currentMinUid = 0;
+                for (uint16 i = 1; i < topUidCount; i++) {
+                    if (topUids[i] < currentMinStake) {
+                        currentMinStake = topUids[i];
+                        currentMinUid = i;
+                    }
+                }
+                // replace the lowest stake with the new uid
+                if (stake > currentMinStake) {
+                    topUids[currentMinUid] = uid;
+                }
+            }
+        }
+
+        if (topUidCount < 5) {
+            emit ValidatorCheckFailed("Not enough UIDs to choose for switch");
+            return;
+        }
+
+        uint64 bestEmission = 0;
+
+        for (uint16 i = 0; i < topUidCount; i++) {
+            uint16 uid = topUids[i];
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
-                    IMetagraph.getDividends.selector,
+                    IMetagraph.getEmission.selector,
+                    netuid,
+                    uid
+                )
+            );
+
+            if (!success) continue;
+            uint64 emission = abi.decode(returnData, (uint64));
+            if (emission > bestEmission) {
+                bestEmission = emission;
+                bestUid = uid;
+            }
+
+            (success, returnData) = address(metagraph).staticcall(
+                abi.encodeWithSelector(
+                    IMetagraph.getHotkey.selector,
                     netuid,
                     uid
                 )
             );
             if (!success) continue;
-            uint16 dividend = abi.decode(returnData, (uint16));
-
-            // Score = stake * (1 + dividend/65535)
-            // Using dividend as a percentage of max uint16
-            uint256 score = (uint256(stake) * (65535 + uint256(dividend))) /
-                65535;
-
-            if (score > bestScore) {
-                (success, returnData) = address(metagraph).staticcall(
-                    abi.encodeWithSelector(
-                        IMetagraph.getHotkey.selector,
-                        netuid,
-                        uid
-                    )
-                );
-                if (success) {
-                    bestScore = score;
-                    bestUid = uid;
-                    bestHotkey = abi.decode(returnData, (bytes32));
-                    foundValid = true;
-                }
-            }
+            bestHotkey = abi.decode(returnData, (bytes32));
+            foundValid = true;
         }
 
         if (!foundValid) {
