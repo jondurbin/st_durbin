@@ -14,6 +14,7 @@ contract SaintDurbinEmergencyTest is Test {
     address owner = address(0x1);
     address emergencyOperator = address(0x2);
     address notOperator = address(0x3);
+    address drainAddress = address(0x4);
 
     bytes32 drainSs58Address = bytes32(uint256(0x999));
     bytes32 validatorHotkey = bytes32(uint256(0x777));
@@ -40,7 +41,15 @@ contract SaintDurbinEmergencyTest is Test {
         mockMetagraph = MockMetagraph(address(0x802));
 
         // Set up the validator in the metagraph
-        mockMetagraph.setValidator(netuid, validatorUid, true, true, validatorHotkey, uint64(1000e9), 10000);
+        mockMetagraph.setValidator(
+            netuid,
+            validatorUid,
+            true,
+            true,
+            validatorHotkey,
+            uint64(1000e9),
+            10000
+        );
 
         // Setup simple recipient configuration
         recipientColdkeys = new bytes32[](16);
@@ -56,11 +65,17 @@ contract SaintDurbinEmergencyTest is Test {
         mockStaking.setValidator(validatorHotkey, netuid, true);
 
         // Set initial stake for the contract before deployment
-        mockStaking.setStake(contractSs58Key, validatorHotkey, netuid, INITIAL_STAKE);
+        mockStaking.setStake(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            INITIAL_STAKE
+        );
 
         // Deploy SaintDurbin with all immutable parameters
         saintDurbin = new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -96,7 +111,12 @@ contract SaintDurbinEmergencyTest is Test {
     function testEmergencyDrainTransfersFullBalance() public {
         // Add some yield to increase balance
         uint256 yieldAmount = 5000e9; // 5,000 TAO
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, yieldAmount);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            yieldAmount
+        );
 
         uint256 totalBalance = INITIAL_STAKE + yieldAmount;
         assertEq(saintDurbin.getStakedBalance(), totalBalance);
@@ -144,7 +164,12 @@ contract SaintDurbinEmergencyTest is Test {
     function testEmergencyDrainDoesNotAffectRecipients() public {
         // Execute a normal distribution first
         uint256 yieldAmount = 1000e9;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, yieldAmount);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            yieldAmount
+        );
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
@@ -152,7 +177,12 @@ contract SaintDurbinEmergencyTest is Test {
         assertEq(transfersBeforeDrain, 16); // All recipients received
 
         // Add more yield
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, yieldAmount);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            yieldAmount
+        );
 
         // Emergency drain
         vm.prank(emergencyOperator);
@@ -165,7 +195,9 @@ contract SaintDurbinEmergencyTest is Test {
         assertEq(mockStaking.getTransferCount(), transfersBeforeDrain + 1);
 
         // Verify the drain transfer
-        MockStaking.Transfer memory drainTransfer = mockStaking.getTransfer(transfersBeforeDrain);
+        MockStaking.Transfer memory drainTransfer = mockStaking.getTransfer(
+            transfersBeforeDrain
+        );
         assertEq(drainTransfer.to, drainSs58Address);
     }
 
@@ -186,18 +218,31 @@ contract SaintDurbinEmergencyTest is Test {
     function testEmergencyDrainAfterPrincipalAddition() public {
         // First distribution to establish baseline
         uint256 normalYield = 100e9;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            normalYield
+        );
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
         // Add principal
         uint256 principalAddition = 5000e9;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, principalAddition + normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            principalAddition + normalYield
+        );
         vm.roll(14401); // Advance to block 14401 (7201 + 7200)
         saintDurbin.executeTransfer();
 
         // Verify principal was detected
-        assertEq(saintDurbin.principalLocked(), INITIAL_STAKE + principalAddition);
+        assertEq(
+            saintDurbin.principalLocked(),
+            INITIAL_STAKE + principalAddition
+        );
 
         // Emergency drain should still transfer everything
         uint256 currentBalance = saintDurbin.getStakedBalance();
@@ -208,7 +253,9 @@ contract SaintDurbinEmergencyTest is Test {
         vm.prank(emergencyOperator);
         saintDurbin.executeEmergencyDrain();
 
-        MockStaking.Transfer memory drainTransfer = mockStaking.getTransfer(mockStaking.getTransferCount() - 1);
+        MockStaking.Transfer memory drainTransfer = mockStaking.getTransfer(
+            mockStaking.getTransferCount() - 1
+        );
         assertEq(drainTransfer.amount, currentBalance);
     }
 

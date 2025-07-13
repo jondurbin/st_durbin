@@ -13,6 +13,7 @@ contract SaintDurbinPrincipalTest is Test {
 
     address owner = address(0x1);
     address emergencyOperator = address(0x2);
+    address drainAddress = address(0x4);
 
     bytes32 drainSs58Address = bytes32(uint256(0x999));
     bytes32 validatorHotkey = bytes32(uint256(0x777));
@@ -36,7 +37,15 @@ contract SaintDurbinPrincipalTest is Test {
         mockMetagraph = MockMetagraph(address(0x802));
 
         // Set up the validator in the metagraph
-        mockMetagraph.setValidator(netuid, validatorUid, true, true, validatorHotkey, uint64(1000e9), 10000);
+        mockMetagraph.setValidator(
+            netuid,
+            validatorUid,
+            true,
+            true,
+            validatorHotkey,
+            uint64(1000e9),
+            10000
+        );
 
         // Setup simple recipient configuration for testing
         recipientColdkeys = new bytes32[](16);
@@ -53,11 +62,17 @@ contract SaintDurbinPrincipalTest is Test {
         mockStaking.setValidator(validatorHotkey, netuid, true);
 
         // Set initial stake for the contract before deployment
-        mockStaking.setStake(contractSs58Key, validatorHotkey, netuid, INITIAL_STAKE);
+        mockStaking.setStake(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            INITIAL_STAKE
+        );
 
         // Deploy SaintDurbin with all immutable parameters
         saintDurbin = new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -71,7 +86,12 @@ contract SaintDurbinPrincipalTest is Test {
     function testPrincipalDetectionOnFirstTransfer() public {
         // First distribution to establish baseline
         uint256 firstYield = 100e9; // 100 TAO
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, firstYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            firstYield
+        );
 
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
@@ -84,7 +104,12 @@ contract SaintDurbinPrincipalTest is Test {
     function testPrincipalDetectionWithRateSpike() public {
         // First distribution to establish baseline rate
         uint256 normalYield = 100e9; // 100 TAO per day
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            normalYield
+        );
 
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
@@ -96,7 +121,12 @@ contract SaintDurbinPrincipalTest is Test {
         // User adds 1000 TAO principal + normal 100 TAO yield
         uint256 principalAddition = 1000e9;
         uint256 totalAddition = principalAddition + normalYield;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, totalAddition);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            totalAddition
+        );
 
         vm.roll(14401); // Advance to block 14401 (7201 + 7200)
 
@@ -117,13 +147,23 @@ contract SaintDurbinPrincipalTest is Test {
     function testMultiplePrincipalAdditions() public {
         // Establish baseline
         uint256 normalYield = 50e9; // 50 TAO per day
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            normalYield
+        );
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
         // First principal addition
         uint256 firstAddition = 500e9;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, firstAddition + normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            firstAddition + normalYield
+        );
         vm.roll(block.number + 7200);
 
         uint256 principalBefore1 = saintDurbin.principalLocked();
@@ -133,13 +173,23 @@ contract SaintDurbinPrincipalTest is Test {
         assertEq(principalAfter1, principalBefore1 + firstAddition);
 
         // Normal distribution
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            normalYield
+        );
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
         // Second principal addition
         uint256 secondAddition = 2000e9;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, secondAddition + normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            secondAddition + normalYield
+        );
         vm.roll(block.number + 7200);
 
         uint256 principalBefore2 = saintDurbin.principalLocked();
@@ -149,19 +199,32 @@ contract SaintDurbinPrincipalTest is Test {
         assertEq(principalAfter2, principalBefore2 + secondAddition);
 
         // Verify total principal
-        assertEq(saintDurbin.principalLocked(), INITIAL_STAKE + firstAddition + secondAddition);
+        assertEq(
+            saintDurbin.principalLocked(),
+            INITIAL_STAKE + firstAddition + secondAddition
+        );
     }
 
     function testRateAnalysisThreshold() public {
         // Establish baseline with higher yield
         uint256 normalYield = 200e9; // 200 TAO per day
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            normalYield
+        );
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
         // Add yield just below 2x threshold (should NOT trigger principal detection)
         uint256 increasedYield = 390e9; // 1.95x
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, increasedYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            increasedYield
+        );
         vm.roll(block.number + 7200);
 
         uint256 principalBefore = saintDurbin.principalLocked();
@@ -174,7 +237,12 @@ contract SaintDurbinPrincipalTest is Test {
 
         // Add yield just above 2x threshold (should trigger principal detection)
         uint256 spikedYield = 810e9; // > 2x of 390
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, spikedYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            spikedYield
+        );
         vm.roll(block.number + 7200);
 
         saintDurbin.executeTransfer();
@@ -188,7 +256,12 @@ contract SaintDurbinPrincipalTest is Test {
     function testPrincipalNeverDistributed() public {
         // Add massive principal
         uint256 hugePrincipal = 100000e9; // 100,000 TAO
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, hugePrincipal);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            hugePrincipal
+        );
 
         // First transfer to detect principal
         vm.roll(block.number + 7200);
@@ -196,7 +269,12 @@ contract SaintDurbinPrincipalTest is Test {
 
         // Add small yield
         uint256 smallYield = 10e9; // 10 TAO
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, smallYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            smallYield
+        );
 
         // Multiple distributions
         for (uint256 i = 0; i < 10; i++) {
@@ -213,7 +291,12 @@ contract SaintDurbinPrincipalTest is Test {
 
             // Add more yield for next iteration
             if (i < 9) {
-                mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, smallYield);
+                mockStaking.addYield(
+                    contractSs58Key,
+                    validatorHotkey,
+                    netuid,
+                    smallYield
+                );
             }
         }
     }
@@ -221,14 +304,24 @@ contract SaintDurbinPrincipalTest is Test {
     function testPrincipalDetectionWithVariableBlockTimes() public {
         // First distribution
         uint256 normalYield = 100e9;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, normalYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            normalYield
+        );
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
         // Second distribution after longer period (should adjust rate accordingly)
         uint256 longerPeriodBlocks = 14400; // 2 days
         uint256 doubleYield = 200e9; // 2x yield for 2x time
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, doubleYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            doubleYield
+        );
         vm.roll(block.number + longerPeriodBlocks);
 
         uint256 principalBefore = saintDurbin.principalLocked();
@@ -241,7 +334,12 @@ contract SaintDurbinPrincipalTest is Test {
         // Third distribution with principal after short period
         uint256 shortPeriodBlocks = 7200;
         uint256 principalPlusYield = 1000e9 + normalYield;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, principalPlusYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            principalPlusYield
+        );
         vm.roll(block.number + shortPeriodBlocks);
 
         saintDurbin.executeTransfer();

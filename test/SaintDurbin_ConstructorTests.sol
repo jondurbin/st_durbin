@@ -9,6 +9,7 @@ contract SaintDurbinConstructorTests is Test {
     MockStaking public mockStaking;
 
     address emergencyOperator = address(0x2);
+    address drainAddress = address(0x4);
     bytes32 drainSs58Address = bytes32(uint256(0x999));
     bytes32 validatorHotkey = bytes32(uint256(0x777));
     bytes32 contractSs58Key = bytes32(uint256(0x888));
@@ -37,6 +38,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.InvalidAddress.selector);
         new SaintDurbin(
             address(0), // invalid emergency operator
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -51,6 +53,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.InvalidAddress.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             bytes32(0), // invalid drain address
             validatorHotkey,
             validatorUid,
@@ -65,6 +68,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.InvalidHotkey.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             bytes32(0),
             validatorUid, // invalid validator hotkey
@@ -79,6 +83,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.InvalidAddress.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -95,6 +100,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.ProportionsMismatch.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -117,6 +123,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.ProportionsMismatch.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -140,6 +147,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.InvalidAddress.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -160,6 +168,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.InvalidProportion.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -179,6 +188,7 @@ contract SaintDurbinConstructorTests is Test {
         vm.expectRevert(SaintDurbin.ProportionsMismatch.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -195,6 +205,7 @@ contract SaintDurbinConstructorTests is Test {
 
         SaintDurbin saintDurbin = new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,

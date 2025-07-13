@@ -10,6 +10,7 @@ contract TestDeploy is Script {
 
         // Test configuration
         address emergencyOperator = msg.sender;
+        address drainAddress = address(0x1234);
         bytes32 drainSs58Address = bytes32(uint256(1));
         bytes32 validatorHotkey = bytes32(uint256(2));
         uint16 validatorUid = 0;
@@ -45,6 +46,7 @@ contract TestDeploy is Script {
 
         SaintDurbin saintDurbin = new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,

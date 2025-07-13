@@ -8,6 +8,7 @@ contract DeploySaintDurbin is Script {
     function run() external {
         // Configuration - ALL MUST BE SET BEFORE DEPLOYMENT
         address emergencyOperator = vm.envAddress("EMERGENCY_OPERATOR");
+        address drainAddress = vm.envAddress("DRAIN_ADDRESS");
         bytes32 drainSs58Address = vm.envBytes32("DRAIN_SS58_ADDRESS");
         bytes32 validatorHotkey = vm.envBytes32("VALIDATOR_HOTKEY");
         uint16 validatorUid = uint16(vm.envUint("VALIDATOR_UID"));
@@ -32,7 +33,9 @@ contract DeploySaintDurbin is Script {
         // Remaining 12 wallets (92% total - uneven distribution)
         // Load from environment
         for (uint256 i = 4; i < 16; i++) {
-            recipientColdkeys[i] = vm.envBytes32(string.concat("RECIPIENT_", vm.toString(i)));
+            recipientColdkeys[i] = vm.envBytes32(
+                string.concat("RECIPIENT_", vm.toString(i))
+            );
         }
 
         // Uneven distribution of remaining 92%
@@ -59,6 +62,7 @@ contract DeploySaintDurbin is Script {
         // Log configuration
         console.log("Deploying SaintDurbin with:");
         console.log("Emergency Operator:", emergencyOperator);
+        console.log("Drain Address:", drainAddress);
         console.log("Drain SS58 Address:", vm.toString(drainSs58Address));
         console.log("Validator Hotkey:", vm.toString(validatorHotkey));
         console.log("Validator UID:", validatorUid);
@@ -71,6 +75,7 @@ contract DeploySaintDurbin is Script {
 
         SaintDurbin saintDurbin = new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -87,17 +92,30 @@ contract DeploySaintDurbin is Script {
         console.log("Initial principal locked:", saintDurbin.principalLocked());
 
         // Get current validator info
-        (bytes32 hotkey, uint16 uid, bool isValid) = saintDurbin.getCurrentValidatorInfo();
-        console.log("Current validator hotkey matches:", hotkey == validatorHotkey);
+        (bytes32 hotkey, uint16 uid, bool isValid) = saintDurbin
+            .getCurrentValidatorInfo();
+        console.log(
+            "Current validator hotkey matches:",
+            hotkey == validatorHotkey
+        );
         console.log("Current validator UID:", uid);
         console.log("Validator is valid:", isValid);
 
         // Verify immutable configuration
         console.log("\nVerifying immutable configuration:");
         console.log("Emergency Operator:", saintDurbin.emergencyOperator());
-        console.log("Drain SS58 Address:", vm.toString(saintDurbin.drainSs58Address()));
-        console.log("Current Validator Hotkey:", vm.toString(saintDurbin.currentValidatorHotkey()));
-        console.log("Contract SS58 Key:", vm.toString(saintDurbin.thisSs58PublicKey()));
+        console.log(
+            "Drain SS58 Address:",
+            vm.toString(saintDurbin.drainSs58Address())
+        );
+        console.log(
+            "Current Validator Hotkey:",
+            vm.toString(saintDurbin.currentValidatorHotkey())
+        );
+        console.log(
+            "Contract SS58 Key:",
+            vm.toString(saintDurbin.thisSs58PublicKey())
+        );
         console.log("NetUID:", saintDurbin.netuid());
 
         console.log("\nDeployment complete! Contract is now fully immutable.");
