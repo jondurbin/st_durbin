@@ -1,4 +1,5 @@
 {
+  "type": "comonjs",
   "dependencies": {
     "@polkadot-api/descriptors": "^0.0.1"
   }

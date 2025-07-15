@@ -1,13 +1,18 @@
 // scripts/check-validator.js
 const { ethers } = require('ethers');
-require('dotenv').config();
+
+// Only load dotenv if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  require('dotenv').config();
+}
 
 const SAINTDURBIN_ABI = [
   "function currentValidatorHotkey() external view returns (bytes32)",
   "function currentValidatorUid() external view returns (uint16)",
   "function getCurrentValidatorInfo() external view returns (bytes32 hotkey, uint16 uid, bool isValid)",
   "function getStakedBalance() external view returns (uint256)",
-  "function checkAndSwitchValidator() external"
+  "function checkAndSwitchValidator() external",
+  "event ValidatorSwitched(bytes32 indexed oldHotkey, bytes32 indexed newHotkey, uint16 newUid, string reason)"
 ];
 
 /**
@@ -16,13 +21,13 @@ const SAINTDURBIN_ABI = [
  * @returns {Promise<Object>} Validator info including hotkey, uid, isValid, and stakedBalance
  */
 async function getValidatorInfo(contract) {
-  const [hotkey, uid, isValid] = await contract.getCurrentValidatorInfo();
+  const validatorInfo = await contract.getCurrentValidatorInfo();
   const stakedBalance = await contract.getStakedBalance();
-  
+
   return {
-    hotkey: hotkey.toString(),
-    uid: uid.toString(),
-    isValid,
+    hotkey: validatorInfo.hotkey.toString(),
+    uid: validatorInfo.uid.toString(),
+    isValid: validatorInfo.isValid,
     stakedBalance: stakedBalance.toString(),
     stakedBalanceFormatted: ethers.formatUnits(stakedBalance, 9)
   };
@@ -34,40 +39,74 @@ async function getValidatorInfo(contract) {
  * @param {Object} options - Options for the switch
  * @param {boolean} options.skipTransaction - If true, don't actually send the transaction
  * @param {number} options.gasLimit - Gas limit for the transaction
+ * @param {boolean} options.silent - Suppress console output
  * @returns {Promise<Object>} Result of the switch operation
  */
 async function switchValidator(contract, options = {}) {
-  const { skipTransaction = false, gasLimit = 500000 } = options;
-  
+  const { skipTransaction = false, gasLimit = 500000, silent = false } = options;
+  const log = silent ? () => {} : console.log;
+
   if (skipTransaction) {
     return {
       success: true,
       skipped: true,
-      message: 'Transaction skipped (test mode)'
+      message: 'Validator switch simulated (skipTransaction=true)'
     };
   }
-  
-  const tx = await contract.checkAndSwitchValidator({ gasLimit });
-  const receipt = await tx.wait();
-  
-  if (receipt.status !== 1) {
+
+  try {
+    const tx = await contract.checkAndSwitchValidator({ gasLimit });
+    log('Transaction submitted:', tx.hash);
+
+    const receipt = await tx.wait();
+
+    if (receipt.status !== 1) {
+      return {
+        success: false,
+        transactionHash: tx.hash,
+        message: 'Transaction failed'
+      };
+    }
+
+    // Parse ValidatorSwitched events from the receipt
+    const filter = contract.filters.ValidatorSwitched();
+    const events = await contract.queryFilter(filter, receipt.blockNumber, receipt.blockNumber);
+
+    if (events.length > 0) {
+      const event = events[0];
+      const { oldHotkey, newHotkey, newUid, reason } = event.args;
+
+      // Get new validator info after switch
+      const newValidatorInfo = await getValidatorInfo(contract);
+
+      return {
+        success: true,
+        transactionHash: tx.hash,
+        message: `Validator switched from UID ${event.args.oldUid || 'unknown'} to UID ${newUid.toString()} - ${reason}`,
+        newValidator: newValidatorInfo,
+        event: {
+          oldValidator: oldHotkey,
+          newValidator: newHotkey,
+          oldUid: event.args.oldUid,
+          newUid: newUid,
+          reason: reason
+        }
+      };
+    } else {
+      // No switch occurred
+      return {
+        success: true,
+        transactionHash: tx.hash,
+        message: 'Validator check completed (no switch occurred)'
+      };
+    }
+  } catch (error) {
     return {
       success: false,
-      transactionHash: tx.hash,
-      message: 'Transaction failed'
+      message: `Failed to switch validator: ${error.message}`,
+      error: error
     };
   }
-  
-  // Get new validator info after switch
-  const newValidatorInfo = await getValidatorInfo(contract);
-  
-  return {
-    success: true,
-    transactionHash: tx.hash,
-    previousValidator: null, // Will be set by calling function
-    newValidator: newValidatorInfo,
-    message: 'Validator switched successfully'
-  };
 }
 
 /**
@@ -90,19 +129,19 @@ async function checkValidator(options = {}) {
     skipTransaction = false,
     silent = false
   } = options;
-  
+
   const log = silent ? () => {} : console.log;
   const error = silent ? () => {} : console.error;
-  
+
   try {
     // Initialize provider, wallet, and contract
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const wallet = new ethers.Wallet(privateKey, provider);
     const contract = new ethers.Contract(contractAddress, SAINTDURBIN_ABI, wallet);
-    
+
     // Get current validator info
     const validatorInfo = await getValidatorInfo(contract);
-    
+
     log('SaintDurbin Validator Check');
     log('Contract:', contractAddress);
     log('');
@@ -113,7 +152,7 @@ async function checkValidator(options = {}) {
     log('');
     log('Contract Staked Balance:', validatorInfo.stakedBalanceFormatted, 'TAO');
     log('');
-    
+
     const result = {
       success: true,
       contractAddress,
@@ -121,26 +160,26 @@ async function checkValidator(options = {}) {
       switchPerformed: false,
       switchResult: null
     };
-    
+
     if (!validatorInfo.isValid) {
       log('⚠️  WARNING: Current validator is no longer valid!');
       log('The contract will automatically switch validators during the next distribution.');
-      
+
       if (shouldSwitch) {
         log('');
         log('Triggering manual validator switch...');
-        
-        const switchResult = await switchValidator(contract, { skipTransaction });
+
+        const switchResult = await switchValidator(contract, { skipTransaction, silent });
         result.switchPerformed = true;
         result.switchResult = switchResult;
-        
+
         if (switchResult.success) {
           if (switchResult.skipped) {
             log('✅ Switch skipped (test mode)');
           } else {
             log('Transaction submitted:', switchResult.transactionHash);
             log('✅ Transaction successful!');
-            
+
             if (switchResult.newValidator) {
               log('');
               log('New Validator:');
@@ -160,15 +199,19 @@ async function checkValidator(options = {}) {
     } else {
       log('✅ Validator is healthy and active');
     }
-    
+
     return result;
-    
+
   } catch (err) {
-    error('❌ Error checking validator:', err.message);
+    const errorMessage = err.message || err.toString();
+    error('❌ Error checking validator:', errorMessage);
     return {
       success: false,
-      error: err.message,
-      errorDetails: err
+      error: 'Failed to check validator',
+      errorDetails: {
+        message: errorMessage,
+        stack: err.stack
+      }
     };
   }
 }
@@ -178,12 +221,12 @@ async function checkValidator(options = {}) {
  */
 async function main() {
   const shouldSwitch = process.argv.includes('--switch');
-  
+
   const result = await checkValidator({
     shouldSwitch,
     silent: false
   });
-  
+
   if (!result.success) {
     process.exit(1);
   }

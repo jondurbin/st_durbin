@@ -5,7 +5,7 @@ const {
   getValidatorInfo,
   switchValidator,
   checkValidator
-} = require('../check-validator');
+} = require('../check-validator.cjs');
 
 describe('SaintDurbin Validator Check Integration Tests', function() {
   this.timeout(30000); // 30 second timeout for integration tests

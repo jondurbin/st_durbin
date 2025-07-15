@@ -1,6 +1,7 @@
 {
   "name": "saintdurbin-distribution",
   "version": "1.0.0",
+  "type": "commonjs",
   "description": "SaintDurbin yield distribution cron job",
   "main": "distribute.js",
   "scripts": {

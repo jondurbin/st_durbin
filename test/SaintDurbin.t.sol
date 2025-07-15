@@ -15,6 +15,7 @@ contract SaintDurbinTest is Test {
     address emergencyOperator = address(0x2);
     address executor = address(0x3);
 
+    address drainAddress = address(0x4);
     bytes32 drainSs58Address = bytes32(uint256(0x999));
     bytes32 validatorHotkey = bytes32(uint256(0x777));
     // In production tests, this should be pre-calculated using the JS utility
@@ -95,6 +96,7 @@ contract SaintDurbinTest is Test {
 
         saintDurbin = new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,
@@ -362,6 +364,7 @@ contract SaintDurbinTest is Test {
         vm.expectRevert(SaintDurbin.InvalidAddress.selector);
         new SaintDurbin(
             emergencyOperator,
+            drainAddress,
             drainSs58Address,
             validatorHotkey,
             validatorUid,

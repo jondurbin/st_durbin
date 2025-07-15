@@ -17,14 +17,17 @@ const SAINTDURBIN_ABI = [
   "function getCurrentValidatorInfo() external view returns (bytes32 hotkey, uint16 uid, bool isValid)",
   "function getStakedBalance() external view returns (uint256)",
   "function checkAndSwitchValidator() external",
-  "event ValidatorSwitched(bytes32 indexed oldHotkey, bytes32 indexed newHotkey, uint16 newUid, string reason)"
+  "function principalLocked() external view returns (uint256)",
+  "function lastTransferBlock() external view returns (uint256)",
+  "event ValidatorSwitched(bytes32 indexed oldHotkey, bytes32 indexed newHotkey, uint16 newUid, string reason)",
+  "event StakeTransferred(uint256 totalAmount, uint256 newBalance)"
 ];
 
 // Configuration for monitoring
 const CONFIG = {
   // Check validator status every N distributions
   checkInterval: parseInt(process.env.VALIDATOR_CHECK_INTERVAL || '10'),
-  
+
   // Monitor for validator switches
   monitorValidatorSwitches: true
 };
@@ -49,47 +52,51 @@ function setDistributionCount(count) {
 
 /**
  * Execute a distribution
- * @param {ethers.Contract} contract - The SaintDurbin contract instance
- * @param {ethers.providers.Provider} provider - The Ethereum provider
- * @param {Object} options - Options for distribution
- * @param {boolean} options.skipValidatorCheck - Skip validator status check
+ * @param {Object} params - Parameters object
+ * @param {ethers.providers.Provider} params.provider - The Ethereum provider
+ * @param {ethers.Signer} params.signer - The signer
+ * @param {ethers.Contract} params.contract - The SaintDurbin contract instance
+ * @param {boolean} params.skipValidatorCheck - Skip validator status check
  * @returns {Object} Result object with success status and details
  */
-async function executeDistribution(contract, provider, options = {}) {
+async function executeDistribution(params) {
+  const { provider, signer, contract, skipValidatorCheck = false } = params;
+
   const result = {
     success: false,
     canExecute: false,
     blocksRemaining: null,
-    transactionHash: null,
+    txHash: null,
     amount: null,
     gasUsed: null,
     error: null,
-    validatorSwitched: false
+    validatorSwitched: false,
+    validatorStatus: null
   };
 
   try {
     // Increment distribution counter
     distributionCount++;
-    
+
     // Check validator status periodically
-    if (!options.skipValidatorCheck && distributionCount % CONFIG.checkInterval === 0) {
-      await checkValidatorStatus(contract, provider, options);
+    if (!skipValidatorCheck && distributionCount % CONFIG.checkInterval === 0) {
+      result.validatorStatus = await checkValidatorStatus({ contract });
     }
 
     // Check if distribution can be executed
     result.canExecute = await contract.canExecuteTransfer();
-    
+
     if (!result.canExecute) {
       result.blocksRemaining = await contract.blocksUntilNextTransfer();
-      const message = `Distribution not ready. Blocks remaining: ${result.blocksRemaining}`;
-      console.log(message);
+      result.error = `Cannot execute transfer yet. ${result.blocksRemaining} blocks remaining`;
+      console.log(result.error);
       return result;
     }
 
     // Get distribution details
     const nextAmount = await contract.getNextTransferAmount();
     const availableRewards = await contract.getAvailableRewards();
-    
+
     console.log('Next transfer amount:', ethers.formatUnits(nextAmount, 9), 'TAO');
     console.log('Available rewards:', ethers.formatUnits(availableRewards, 9), 'TAO');
 
@@ -98,22 +105,29 @@ async function executeDistribution(contract, provider, options = {}) {
     const tx = await contract.executeTransfer({
       gasLimit: 1000000 // Adjust based on testing
     });
-    
+
     console.log('Transaction submitted:', tx.hash);
     const receipt = await tx.wait();
-    
+
     if (receipt.status === 1) {
       result.success = true;
-      result.transactionHash = tx.hash;
-      result.amount = nextAmount.toString();
+      result.txHash = tx.hash;
+      result.amount = ethers.formatUnits(nextAmount, 9);
       result.gasUsed = receipt.gasUsed.toString();
-      
+
       const message = `✅ Distribution successful!\nTx: ${tx.hash}\nAmount: ${ethers.formatUnits(nextAmount, 9)} TAO\nGas used: ${receipt.gasUsed.toString()}`;
       console.log(message);
-      
+
       // Monitor for validator switches during distribution
-      const switchEvents = await monitorValidatorSwitches(contract, receipt, options);
-      result.validatorSwitched = switchEvents.length > 0;
+      if (CONFIG.monitorValidatorSwitches) {
+        const switchEvents = await monitorValidatorSwitches({
+          contract,
+          provider,
+          fromBlock: receipt.blockNumber,
+          toBlock: receipt.blockNumber
+        });
+        result.validatorSwitched = switchEvents.length > 0;
+      }
     } else {
       throw new Error('Transaction failed');
     }
@@ -139,8 +153,114 @@ function initializeDistribution(config) {
   const provider = new ethers.JsonRpcProvider(config.rpcUrl);
   const wallet = new ethers.Wallet(config.privateKey, provider);
   const contract = new ethers.Contract(config.contractAddress, SAINTDURBIN_ABI, wallet);
-  
+
   return { provider, wallet, contract };
+}
+
+/**
+ * Check validator status
+ * @param {Object} params - Parameters
+ * @param {ethers.Contract} params.contract - The SaintDurbin contract instance
+ * @returns {Object} Status object with validator information
+ */
+async function checkValidatorStatus(params) {
+  const { contract } = params;
+  console.log('Checking validator status...');
+
+  const status = {
+    success: false,
+    hotkey: null,
+    uid: null,
+    isValid: false,
+    invalidReason: null,
+    stakedBalance: null,
+    validatorSwitched: false,
+    switchTransactionHash: null,
+    error: null
+  };
+
+  try {
+    // Get current validator info
+    const validatorInfo = await contract.getCurrentValidatorInfo();
+    status.hotkey = validatorInfo.hotkey;
+    status.uid = Number(validatorInfo.uid);
+    status.isValid = validatorInfo.isValid;
+
+    console.log('Current validator:');
+    console.log('  Hotkey:', status.hotkey);
+    console.log('  UID:', status.uid);
+    console.log('  Is valid:', status.isValid);
+
+    if (!status.isValid) {
+      status.invalidReason = 'Validator is not active on the metagraph';
+      const message = `⚠️ Current validator is no longer valid!\nThe contract will automatically switch to a new validator.\nHotkey: ${status.hotkey}\nUID: ${status.uid}`;
+      console.warn(message);
+    } else {
+      console.log('Validator status check passed');
+    }
+
+    // Also check contract's staked balance
+    const stakedBalance = await contract.getStakedBalance();
+    status.stakedBalance = stakedBalance.toString();
+    console.log('Contract staked balance:', ethers.formatUnits(stakedBalance, 9), 'TAO');
+
+    status.success = true;
+  } catch (error) {
+    status.error = 'Failed to check validator status';
+    const message = `❌ Validator status check failed!\nError: ${error.message}`;
+    console.error(message);
+  }
+
+  return status;
+}
+
+/**
+ * Monitor for validator switch events
+ * @param {Object} params - Parameters
+ * @param {ethers.Contract} params.contract - The SaintDurbin contract instance
+ * @param {ethers.providers.Provider} params.provider - The Ethereum provider
+ * @param {number} params.fromBlock - Starting block
+ * @param {number} params.toBlock - Ending block (optional)
+ * @returns {Array} Array of switch events
+ */
+async function monitorValidatorSwitches(params) {
+  const { contract, provider, fromBlock, toBlock } = params;
+  const switchEvents = [];
+
+  try {
+    const endBlock = toBlock || await provider.getBlockNumber();
+    const filter = contract.filters.ValidatorSwitched();
+    const events = await contract.queryFilter(filter, fromBlock, endBlock);
+
+    for (const event of events) {
+      const eventData = {
+        blockNumber: event.blockNumber,
+        oldHotkey: event.args.oldHotkey,
+        newHotkey: event.args.newHotkey,
+        oldUid: Number(event.args.oldUid || 0),
+        newUid: Number(event.args.newUid),
+        reason: event.args.reason,
+        timestamp: null
+      };
+
+      // Get block timestamp
+      try {
+        const block = await event.getBlock();
+        eventData.timestamp = block.timestamp;
+      } catch (err) {
+        console.error('Failed to get block timestamp:', err.message);
+      }
+
+      switchEvents.push(eventData);
+
+      const message = `🔄 Validator switched!\nOld: ${eventData.oldHotkey}\nNew: ${eventData.newHotkey}\nNew UID: ${eventData.newUid}\nReason: ${eventData.reason}`;
+      console.log(message);
+    }
+  } catch (error) {
+    console.error('Error monitoring validator switches:', error.message);
+  }
+
+  return switchEvents;
 }
 
 /**
@@ -149,18 +269,18 @@ function initializeDistribution(config) {
 async function main() {
   console.log('SaintDurbin Distribution Script Started');
   console.log('Contract:', process.env.CONTRACT_ADDRESS);
-  
+
   try {
     const { provider, wallet, contract } = initializeDistribution({
       rpcUrl: process.env.RPC_URL,
       privateKey: process.env.PRIVATE_KEY,
       contractAddress: process.env.CONTRACT_ADDRESS
     });
-    
+
     console.log('Executor:', wallet.address);
-    
-    const result = await executeDistribution(contract, provider);
-    
+
+    const result = await executeDistribution({ contract, provider, signer: wallet });
+
     if (!result.success && result.error) {
       process.exit(1);
     }
@@ -168,134 +288,6 @@ async function main() {
     console.error('Failed to initialize distribution:', error.message);
     process.exit(1);
   }
-}
-
-/**
- * Check validator status
- * @param {ethers.Contract} contract - The SaintDurbin contract instance
- * @param {ethers.providers.Provider} provider - The Ethereum provider
- * @param {Object} options - Options
- * @returns {Object} Status object with validator information
- */
-async function checkValidatorStatus(contract, provider, options = {}) {
-  console.log('Checking validator status...');
-  
-  const status = {
-    success: false,
-    hotkey: null,
-    uid: null,
-    isValid: false,
-    stakedBalance: null,
-    validatorSwitched: false,
-    switchTransactionHash: null,
-    error: null
-  };
-  
-  try {
-    // Get current validator info
-    const [hotkey, uid, isValid] = await contract.getCurrentValidatorInfo();
-    status.hotkey = hotkey;
-    status.uid = uid.toString();
-    status.isValid = isValid;
-    
-    console.log('Current validator:');
-    console.log('  Hotkey:', hotkey);
-    console.log('  UID:', uid.toString());
-    console.log('  Is valid:', isValid);
-    
-    if (!isValid) {
-      const message = `⚠️ Current validator is no longer valid!\nThe contract will automatically switch to a new validator.\nHotkey: ${hotkey}\nUID: ${uid}`;
-      console.warn(message);
-      
-      // Optionally trigger manual validator check
-      console.log('Triggering validator check...');
-      try {
-        const tx = await contract.checkAndSwitchValidator({
-          gasLimit: 500000
-        });
-        console.log('Validator check transaction:', tx.hash);
-        status.switchTransactionHash = tx.hash;
-        const receipt = await tx.wait();
-        
-        // Check for ValidatorSwitched event
-        const switchEvent = receipt.logs.find(log => {
-          try {
-            const parsed = contract.interface.parseLog(log);
-            return parsed && parsed.name === 'ValidatorSwitched';
-          } catch {
-            return false;
-          }
-        });
-        
-        if (switchEvent) {
-          const parsed = contract.interface.parseLog(switchEvent);
-          status.validatorSwitched = true;
-          const message = `✅ Validator switched successfully!\nOld: ${parsed.args.oldHotkey}\nNew: ${parsed.args.newHotkey}\nNew UID: ${parsed.args.newUid}\nReason: ${parsed.args.reason}`;
-          console.log(message);
-        }
-      } catch (error) {
-        console.log('Validator check transaction failed or no switch needed:', error.message);
-      }
-    } else {
-      console.log('Validator status check passed');
-    }
-    
-    // Also check contract's staked balance
-    const stakedBalance = await contract.getStakedBalance();
-    status.stakedBalance = stakedBalance.toString();
-    console.log('Contract staked balance:', ethers.formatUnits(stakedBalance, 9), 'TAO');
-    
-    status.success = true;
-  } catch (error) {
-    status.error = error.message;
-    const message = `❌ Validator status check failed!\nError: ${error.message}`;
-    console.error(message);
-  }
-  
-  return status;
-}
-
-/**
- * Monitor for validator switch events
- * @param {ethers.Contract} contract - The SaintDurbin contract instance
- * @param {Object} receipt - Transaction receipt
- * @param {Object} options - Options
- * @returns {Array} Array of switch events
- */
-async function monitorValidatorSwitches(contract, receipt, options = {}) {
-  const switchEvents = [];
-  
-  if (!CONFIG.monitorValidatorSwitches) return switchEvents;
-  
-  try {
-    // Check for ValidatorSwitched events in the transaction receipt
-    const events = receipt.logs.filter(log => {
-      try {
-        const parsed = contract.interface.parseLog(log);
-        return parsed && parsed.name === 'ValidatorSwitched';
-      } catch {
-        return false;
-      }
-    });
-    
-    for (const event of events) {
-      const parsed = contract.interface.parseLog(event);
-      const eventData = {
-        oldHotkey: parsed.args.oldHotkey,
-        newHotkey: parsed.args.newHotkey,
-        newUid: parsed.args.newUid.toString(),
-        reason: parsed.args.reason
-      };
-      switchEvents.push(eventData);
-      
-      const message = `🔄 Validator switched during distribution!\nOld: ${eventData.oldHotkey}\nNew: ${eventData.newHotkey}\nNew UID: ${eventData.newUid}\nReason: ${eventData.reason}`;
-      console.log(message);
-    }
-  } catch (error) {
-    console.error('Error monitoring validator switches:', error.message);
-  }
-  
-  return switchEvents;
 }
 
 // Export functions for testing
