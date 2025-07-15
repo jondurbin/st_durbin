@@ -91,7 +91,9 @@ contract SaintDurbinValidatorSwitchTest is Test {
     }
 
     function testValidatorLosesPermit() public {
-        // Set up alternative validators
+        // Set up alternative validators with proper emission values
+        // Validator2: emission=100e9, stake=2000e9, dividend=15000
+        // Yield score = (100e9 * 15000) / 2000e9 = 750
         mockMetagraph.setValidator(
             netuid,
             validator2Uid,
@@ -101,6 +103,10 @@ contract SaintDurbinValidatorSwitchTest is Test {
             uint64(2000e9),
             15000
         );
+        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
+
+        // Validator3: emission=80e9, stake=1500e9, dividend=12000
+        // Yield score = (80e9 * 12000) / 1500e9 = 640
         mockMetagraph.setValidator(
             netuid,
             validator3Uid,
@@ -110,6 +116,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
             uint64(1500e9),
             12000
         );
+        mockMetagraph.setEmission(netuid, validator3Uid, uint64(80e9));
 
         // Current validator loses permit
         mockMetagraph.setValidator(
@@ -122,7 +129,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
             10000
         );
 
-        // Expect the validator switch event
+        // Expect the validator switch event - validator2 has higher yield score
         vm.expectEmit(true, true, false, true);
         emit ValidatorSwitched(
             validatorHotkey,
@@ -132,6 +139,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
 
         // Call checkAndSwitchValidator
+        vm.prank(emergencyOperator);
         saintDurbin.checkAndSwitchValidator();
 
         // Verify validator was switched
@@ -140,7 +148,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
     }
 
     function testValidatorBecomesInactive() public {
-        // Set up alternative validator
+        // Set up alternative validator with emission
         mockMetagraph.setValidator(
             netuid,
             validator2Uid,
@@ -150,6 +158,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
             uint64(2000e9),
             15000
         );
+        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
 
         // Current validator becomes inactive
         mockMetagraph.setValidator(
@@ -172,6 +181,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
 
         // Call checkAndSwitchValidator
+        vm.prank(emergencyOperator);
         saintDurbin.checkAndSwitchValidator();
 
         // Verify validator was switched
@@ -180,7 +190,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
     }
 
     function testValidatorUidHotkeyMismatch() public {
-        // Set up alternative validator
+        // Set up alternative validator with emission
         mockMetagraph.setValidator(
             netuid,
             validator2Uid,
@@ -190,6 +200,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
             uint64(2000e9),
             15000
         );
+        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
 
         // Change the hotkey for the current UID (simulating UID reassignment)
         bytes32 differentHotkey = bytes32(uint256(0x666));
@@ -213,6 +224,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
 
         // Call checkAndSwitchValidator
+        vm.prank(emergencyOperator);
         saintDurbin.checkAndSwitchValidator();
 
         // Verify validator was switched
@@ -221,8 +233,9 @@ contract SaintDurbinValidatorSwitchTest is Test {
     }
 
     function testSelectBestValidator() public {
-        // Set up multiple validators with different scores
-        // Validator 2: stake=2000, dividend=15000 -> score = 2000 * (65535 + 15000) / 65535 ≈ 2458
+        // Set up multiple validators with different yield scores
+        // Validator 2: emission=100e9, stake=2000e9, dividend=15000
+        // Yield score = (100e9 * 15000) / 2000e9 = 750
         mockMetagraph.setValidator(
             netuid,
             validator2Uid,
@@ -232,17 +245,20 @@ contract SaintDurbinValidatorSwitchTest is Test {
             uint64(2000e9),
             15000
         );
+        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
 
-        // Validator 3: stake=3000, dividend=5000 -> score = 3000 * (65535 + 5000) / 65535 ≈ 3229
+        // Validator 3: emission=150e9, stake=1500e9, dividend=10000
+        // Yield score = (150e9 * 10000) / 1500e9 = 1000 (HIGHEST)
         mockMetagraph.setValidator(
             netuid,
             validator3Uid,
             true,
             true,
             validator3Hotkey,
-            uint64(3000e9),
-            5000
+            uint64(1500e9),
+            10000
         );
+        mockMetagraph.setEmission(netuid, validator3Uid, uint64(150e9));
 
         // Current validator loses permit
         mockMetagraph.setValidator(
@@ -255,7 +271,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
             10000
         );
 
-        // Should select validator3 as it has the highest score
+        // Should select validator3 as it has the highest yield score
         vm.expectEmit(true, true, false, true);
         emit ValidatorSwitched(
             validatorHotkey,
@@ -265,9 +281,10 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
 
         // Call checkAndSwitchValidator
+        vm.prank(emergencyOperator);
         saintDurbin.checkAndSwitchValidator();
 
-        // Verify validator3 was selected (highest score)
+        // Verify validator3 was selected (highest yield score)
         assertEq(saintDurbin.currentValidatorHotkey(), validator3Hotkey);
         assertEq(saintDurbin.currentValidatorUid(), validator3Uid);
     }
@@ -309,6 +326,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
         emit ValidatorCheckFailed("No valid validator found");
 
         // Call checkAndSwitchValidator
+        vm.prank(emergencyOperator);
         saintDurbin.checkAndSwitchValidator();
 
         // Verify validator was NOT switched
@@ -316,54 +334,8 @@ contract SaintDurbinValidatorSwitchTest is Test {
         assertEq(saintDurbin.currentValidatorUid(), validatorUid);
     }
 
-    function testValidatorSwitchDuringExecuteTransfer() public {
-        // Set up alternative validator
-        mockMetagraph.setValidator(
-            netuid,
-            validator2Uid,
-            true,
-            true,
-            validator2Hotkey,
-            uint64(2000e9),
-            15000
-        );
-
-        // Add some yield to distribute
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, 100e9);
-
-        // Advance time to allow transfer
-        vm.roll(block.number + 7201);
-
-        // Current validator loses permit
-        mockMetagraph.setValidator(
-            netuid,
-            validatorUid,
-            false,
-            true,
-            validatorHotkey,
-            uint64(1000e9),
-            10000
-        );
-
-        // executeTransfer should check and switch validator
-        vm.expectEmit(true, true, false, true);
-        emit ValidatorSwitched(
-            validatorHotkey,
-            validator2Hotkey,
-            validator2Uid,
-            "Validator lost permit"
-        );
-
-        // Call executeTransfer
-        saintDurbin.executeTransfer();
-
-        // Verify validator was switched
-        assertEq(saintDurbin.currentValidatorHotkey(), validator2Hotkey);
-        assertEq(saintDurbin.currentValidatorUid(), validator2Uid);
-    }
-
     function testMoveStakeFailure() public {
-        // Set up alternative validator
+        // Set up alternative validator with emission
         mockMetagraph.setValidator(
             netuid,
             validator2Uid,
@@ -373,6 +345,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
             uint64(2000e9),
             15000
         );
+        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
 
         // Current validator loses permit
         mockMetagraph.setValidator(
@@ -393,6 +366,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
         emit ValidatorCheckFailed("Failed to move stake to new validator");
 
         // Call checkAndSwitchValidator
+        vm.prank(emergencyOperator);
         saintDurbin.checkAndSwitchValidator();
 
         // Verify validator was NOT switched due to moveStake failure

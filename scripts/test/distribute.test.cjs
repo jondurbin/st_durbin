@@ -8,7 +8,7 @@ const {
   monitorValidatorSwitches,
   getDistributionCount,
   setDistributionCount
-} = require('../distribute');
+} = require('../distribute.cjs');
 
 describe('SaintDurbin Distribution Integration Tests', function() {
   this.timeout(30000); // 30 second timeout for integration tests

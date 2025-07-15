@@ -303,4 +303,11 @@ contract SaintDurbinEmergencyTest is Test {
 
         assertEq(mockStaking.getTransferCount(), 2);
     }
+
+
+    function testCheckAndSwitchValidatorAccessControl() public {
+        vm.prank(address(0x123));
+        vm.expectRevert(SaintDurbin.NotEmergencyOperatorOrDrainAddress.selector);
+        saintDurbin.checkAndSwitchValidator();
+    }
 }

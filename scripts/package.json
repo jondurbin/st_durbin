@@ -5,11 +5,11 @@
   "type": "module",
   "main": "distribute.js",
   "scripts": {
-    "distribute": "node distribute.js",
-    "test": "mocha test/**/*.test.js",
-    "test:distribute": "mocha test/distribute.test.js",
-    "test:validator": "mocha test/check-validator.test.js",
-    "check-validator": "node check-validator.js"
+    "distribute": "node distribute.cjs",
+    "test": "mocha test/**/*.test.cjs",
+    "test:distribute": "mocha test/distribute.test.cjs",
+    "test:validator": "mocha test/check-validator.test.cjs",
+    "check-validator": "node check-validator.cjs"
   },
   "dependencies": {
     "ethers": "^6.9.0",

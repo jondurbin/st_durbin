@@ -6,9 +6,9 @@ import "./interfaces/IMetagraph.sol";
 
 /**
  * @title SaintDurbin
- * @notice Patron Saint of Bittensor - With Automatic Validator Switching
+ * @notice Patron Saint of Bittensor - With Manual Validator Switching
  * @dev Distributes staking rewards to recipients while preserving the principal amount
- * @dev Automatically switches validators if current validator loses permit
+ * @dev Validator switching must be done manually by emergency operator
  */
 contract SaintDurbin {
     // ========== Constants ==========
@@ -29,6 +29,7 @@ contract SaintDurbin {
     uint16 public currentValidatorUid; // Track the UID of current validator
     bytes32 public thisSs58PublicKey;
     uint16 public immutable netuid;
+    bool public ss58PublicKeySet; // Track if SS58 key has been set
 
     // Recipients
     struct Recipient {
@@ -44,7 +45,6 @@ contract SaintDurbin {
     uint256 public lastTransferBlock;
     uint256 public lastRewardRate;
     uint256 public lastPaymentAmount;
-    uint256 public lastValidatorCheckBlock; // Track when we last checked validator status
 
     // Emergency drain
     address public immutable emergencyOperator;
@@ -87,6 +87,8 @@ contract SaintDurbin {
         bytes32 indexed currentValidatorHotkey,
         uint256 amount
     );
+    event SS58PublicKeySet(bytes32 indexed newKey);
+    event PrincipalUpdatedAfterAggregation(uint256 amount, uint256 newPrincipal);
 
     // ========== Custom Errors ==========
     error NotEmergencyOperator();
@@ -102,6 +104,7 @@ contract SaintDurbin {
     error NoValidValidatorFound();
     error StakeMoveFailure();
     error NotEmergencyOperatorOrDrainAddress();
+    error SS58KeyAlreadySet();
 
     // ========== Modifiers ==========
     modifier onlyEmergencyOperator() {
@@ -149,6 +152,7 @@ contract SaintDurbin {
         currentValidatorHotkey = _validatorHotkey;
         currentValidatorUid = _validatorUid;
         thisSs58PublicKey = _thisSs58PublicKey;
+        ss58PublicKeySet = true; // Mark as set since we're setting it in constructor
         netuid = _netuid;
         staking = IStaking(ISTAKING_ADDRESS);
         metagraph = IMetagraph(IMETAGRAPH_ADDRESS);
@@ -172,7 +176,6 @@ contract SaintDurbin {
 
         // Initialize tracking
         lastTransferBlock = block.number;
-        lastValidatorCheckBlock = block.number;
 
         // Get initial balance and set as principal
         principalLocked = _getStakedBalanceHotkey(currentValidatorHotkey);
@@ -187,23 +190,21 @@ contract SaintDurbin {
      * @param _thisSs58PublicKey The new SS58 public key to set
      */
     function setThisSs58PublicKey(bytes32 _thisSs58PublicKey) external {
+        if (ss58PublicKeySet) revert SS58KeyAlreadySet();
+        if (_thisSs58PublicKey == bytes32(0)) revert InvalidAddress();
+
         thisSs58PublicKey = _thisSs58PublicKey;
+        ss58PublicKeySet = true;
+        emit SS58PublicKeySet(_thisSs58PublicKey);
     }
 
     /**
      * @notice Execute daily yield distribution to all recipients
      * @dev Can be called by anyone when conditions are met
-     * @dev Checks validator status and switches if necessary
+     * @dev Does NOT automatically check validator status
      */
     function executeTransfer() external nonReentrant {
         if (!canExecuteTransfer()) revert TransferTooSoon();
-
-        // After change swtich to an always execution, should comment this out
-        // Since there is no permit check. and avoid the stake opeartion limit.
-        // Check and switch validator if needed (every 100 blocks ~ 20 minutes)
-        // if (block.number >= lastValidatorCheckBlock + 100) {
-        //     _checkAndSwitchValidator();
-        // }
 
         uint256 currentBalance = _getStakedBalanceHotkey(
             currentValidatorHotkey
@@ -241,9 +242,8 @@ contract SaintDurbin {
             }
 
             // Enhanced principal detection: check both rate multiplier and absolute threshold
-            // Fix: Multiply before divide to avoid precision loss
             bool rateBasedDetection = lastRewardRate > 0 &&
-                currentRate * 1 > lastRewardRate * RATE_MULTIPLIER_THRESHOLD;
+                currentRate > (lastRewardRate * RATE_MULTIPLIER_THRESHOLD);
             bool absoluteDetection = availableYield > lastPaymentAmount * 3; // Detect if yield is 3x previous payment
 
             if (rateBasedDetection || absoluteDetection) {
@@ -333,10 +333,13 @@ contract SaintDurbin {
         emit StakeTransferred(totalTransferred, newBalance);
     }
 
-    // find out the first validator stake by this contract, then move stake to the current validator
-    // just do it once to avoid the stake rate limit
-    function aggregateStake() external {
-        // Find best validator: highest stake + dividend among validators with permits
+    /**
+     * @notice Aggregate stake from other validators to the current validator
+     * @dev Moves stake from first found validator to current validator and updates principal
+     * @dev Can be called by anyone to consolidate stake
+     */
+    function aggregateStake() external nonReentrant {
+        // Find validators with stake and move to current validator
         uint16 uidCount = 0;
         (bool success, bytes memory returnData) = address(metagraph).staticcall(
             abi.encodeWithSelector(IMetagraph.getUidCount.selector, netuid)
@@ -368,6 +371,9 @@ contract SaintDurbin {
             uint256 stake = _getStakedBalanceHotkey(hotkey);
             if (stake == 0) continue;
 
+            // Get balance before move
+            uint256 balanceBefore = _getStakedBalanceHotkey(currentValidatorHotkey);
+
             (success, ) = address(staking).call(
                 abi.encodeWithSelector(
                     IStaking.moveStake.selector,
@@ -379,11 +385,20 @@ contract SaintDurbin {
                 )
             );
             if (success) {
-                emit StakeAggregated(hotkey, currentValidatorHotkey, stake);
+                // Get balance after move
+                uint256 balanceAfter = _getStakedBalanceHotkey(currentValidatorHotkey);
+                uint256 actualMoved = balanceAfter - balanceBefore;
+
+                // Update principal to include the moved stake
+                principalLocked += actualMoved;
+                previousBalance = balanceAfter; // Update tracking
+
+                emit StakeAggregated(hotkey, currentValidatorHotkey, actualMoved);
+                emit PrincipalUpdatedAfterAggregation(actualMoved, principalLocked);
             } else {
                 revert StakeMoveFailure();
             }
-            break;
+            break; // Only move from one validator per call
         }
     }
 
@@ -392,66 +407,63 @@ contract SaintDurbin {
      * @dev Internal function that checks metagraph and moves stake if needed
      */
     function _checkAndSwitchValidator() internal {
-        lastValidatorCheckBlock = block.number;
-        _switchToNewValidator("Select a new validator");
-        return;
+        // Check if current validator still has permit
+        (bool success, bytes memory returnData) = address(metagraph).staticcall(
+            abi.encodeWithSelector(
+                IMetagraph.getValidatorStatus.selector,
+                netuid,
+                currentValidatorUid
+            )
+        );
+        if (!success) {
+            emit ValidatorCheckFailed("Failed to check validator status");
+            return;
+        }
+        bool isValidator = abi.decode(returnData, (bool));
+        if (!isValidator) {
+            // Current validator lost permit, find new one
+            _switchToNewValidator("Validator lost permit");
+            return;
+        }
 
-        // (bool success, bytes memory returnData) = address(metagraph).staticcall(
-        //     abi.encodeWithSelector(
-        //         IMetagraph.getValidatorStatus.selector,
-        //         netuid,
-        //         currentValidatorUid
-        //     )
-        // );
-        // if (!success) {
-        //     emit ValidatorCheckFailed("Failed to check validator status");
-        //     return;
-        // }
-        // bool isValidator = abi.decode(returnData, (bool));
-        // if (!isValidator) {
-        //     // Current validator lost permit, find new one
-        //     _switchToNewValidator("Validator lost permit");
-        //     return;
-        // }
+        // Also check if the UID still has the same hotkey
+        (success, returnData) = address(metagraph).staticcall(
+            abi.encodeWithSelector(
+                IMetagraph.getHotkey.selector,
+                netuid,
+                currentValidatorUid
+            )
+        );
+        if (!success) {
+            emit ValidatorCheckFailed("Failed to check UID hotkey");
+            return;
+        }
+        bytes32 uidHotkey = abi.decode(returnData, (bytes32));
+        if (uidHotkey != currentValidatorHotkey) {
+            // UID has different hotkey, need to find new validator
+            _switchToNewValidator("Validator UID hotkey mismatch");
+            return;
+        }
 
-        // // Also check if the UID still has the same hotkey
-        // (success, returnData) = address(metagraph).staticcall(
-        //     abi.encodeWithSelector(
-        //         IMetagraph.getHotkey.selector,
-        //         netuid,
-        //         currentValidatorUid
-        //     )
-        // );
-        // if (!success) {
-        //     emit ValidatorCheckFailed("Failed to check UID hotkey");
-        //     return;
-        // }
-        // bytes32 uidHotkey = abi.decode(returnData, (bytes32));
-        // if (uidHotkey != currentValidatorHotkey) {
-        //     // UID has different hotkey, need to find new validator
-        //     _switchToNewValidator("Validator UID hotkey mismatch");
-        //     return;
-        // }
-
-        // // Check if validator is still active
-        // (success, returnData) = address(metagraph).staticcall(
-        //     abi.encodeWithSelector(
-        //         IMetagraph.getIsActive.selector,
-        //         netuid,
-        //         currentValidatorUid
-        //     )
-        // );
-        // if (!success) {
-        //     emit ValidatorCheckFailed(
-        //         "Failed to check validator active status"
-        //     );
-        //     return;
-        // }
-        // bool isActive = abi.decode(returnData, (bool));
-        // if (!isActive) {
-        //     _switchToNewValidator("Validator is inactive");
-        //     return;
-        // }
+        // Check if validator is still active
+        (success, returnData) = address(metagraph).staticcall(
+            abi.encodeWithSelector(
+                IMetagraph.getIsActive.selector,
+                netuid,
+                currentValidatorUid
+            )
+        );
+        if (!success) {
+            emit ValidatorCheckFailed(
+                "Failed to check validator active status"
+            );
+            return;
+        }
+        bool isActive = abi.decode(returnData, (bool));
+        if (!isActive) {
+            _switchToNewValidator("Validator is inactive");
+            return;
+        }
     }
 
     /**
@@ -461,7 +473,7 @@ contract SaintDurbin {
     function _switchToNewValidator(string memory reason) internal {
         bytes32 oldHotkey = currentValidatorHotkey;
 
-        // Find best validator: highest stake + dividend among validators with permits
+        // Find best validator based on expected yield (emission * dividends / stake)
         uint16 uidCount = 0;
         (bool success, bytes memory returnData) = address(metagraph).staticcall(
             abi.encodeWithSelector(IMetagraph.getUidCount.selector, netuid)
@@ -477,13 +489,11 @@ contract SaintDurbin {
             return;
         }
 
+        // Find validator with best expected yield
         uint16 bestUid = 0;
         bytes32 bestHotkey = bytes32(0);
-        uint256 bestScore = 0;
+        uint256 bestYieldScore = 0; // emission * dividends / stake
         bool foundValid = false;
-        uint16[] memory topUids = new uint16[](5);
-        uint16 topUidCount = 0;
-        uint64 currentMinStake = 0;
 
         for (uint16 uid = 0; uid < uidCount; uid++) {
             if (uid == currentValidatorUid) continue;
@@ -510,7 +520,19 @@ contract SaintDurbin {
             bool isActive = abi.decode(returnData, (bool));
             if (!isActive) continue;
 
-            // Get stake and dividend to calculate score
+            // Get emission
+            (success, returnData) = address(metagraph).staticcall(
+                abi.encodeWithSelector(
+                    IMetagraph.getEmission.selector,
+                    netuid,
+                    uid
+                )
+            );
+            if (!success) continue;
+            uint64 emission = abi.decode(returnData, (uint64));
+            if (emission == 0) continue;
+
+            // Get stake
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
                     IMetagraph.getStake.selector,
@@ -520,69 +542,52 @@ contract SaintDurbin {
             );
             if (!success) continue;
             uint64 stake = abi.decode(returnData, (uint64));
+            if (stake == 0) continue;
 
-            if (topUidCount < 5) {
-                topUids[topUidCount] = uid;
-                topUidCount++;
-            } else {
-                currentMinStake = topUids[0];
-                uint16 currentMinUid = 0;
-                for (uint16 i = 1; i < topUidCount; i++) {
-                    if (topUids[i] < currentMinStake) {
-                        currentMinStake = topUids[i];
-                        currentMinUid = i;
-                    }
-                }
-                // replace the lowest stake with the new uid
-                if (stake > currentMinStake) {
-                    topUids[currentMinUid] = uid;
-                }
-            }
-        }
-
-        if (topUidCount < 5) {
-            emit ValidatorCheckFailed("Not enough UIDs to choose for switch");
-            return;
-        }
-
-        uint64 bestEmission = 0;
-
-        for (uint16 i = 0; i < topUidCount; i++) {
-            uint16 uid = topUids[i];
+            // Get dividends (validator take)
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
-                    IMetagraph.getEmission.selector,
+                    IMetagraph.getDividends.selector,
                     netuid,
                     uid
                 )
             );
-
             if (!success) continue;
-            uint64 emission = abi.decode(returnData, (uint64));
-            if (emission > bestEmission) {
-                bestEmission = emission;
+            uint64 dividends = abi.decode(returnData, (uint64));
+
+            // Calculate yield score: (emission * dividends) / stake
+            // This represents expected return per unit of stake
+            // dividends is in basis points (0-65535 where 65535 = 100%)
+            uint256 yieldScore = (uint256(emission) * uint256(dividends)) / uint256(stake);
+
+            if (yieldScore > bestYieldScore) {
+                bestYieldScore = yieldScore;
                 bestUid = uid;
-            }
 
-            (success, returnData) = address(metagraph).staticcall(
-                abi.encodeWithSelector(
-                    IMetagraph.getHotkey.selector,
-                    netuid,
-                    uid
-                )
-            );
-            if (!success) continue;
-            bestHotkey = abi.decode(returnData, (bytes32));
-            foundValid = true;
+                // Get hotkey for best validator
+                (success, returnData) = address(metagraph).staticcall(
+                    abi.encodeWithSelector(
+                        IMetagraph.getHotkey.selector,
+                        netuid,
+                        uid
+                    )
+                );
+                if (!success) continue;
+                bestHotkey = abi.decode(returnData, (bytes32));
+                foundValid = true;
+            }
         }
 
-        if (!foundValid) {
+        if (!foundValid || bestHotkey == bytes32(0)) {
             emit ValidatorCheckFailed("No valid validator found");
             return;
         }
 
+        // Get balance before move
+        uint256 balanceBefore = _getStakedBalanceHotkey(currentValidatorHotkey);
+
         // Move stake to new validator
-        uint256 currentStake = _getStakedBalanceHotkey(currentValidatorHotkey);
+        uint256 currentStake = balanceBefore;
         if (currentStake > 0) {
             // Update state variables BEFORE external call to prevent reentrancy
             bytes32 previousHotkey = currentValidatorHotkey;
@@ -601,6 +606,10 @@ contract SaintDurbin {
                 )
             );
             if (success) {
+                // Get balance after move to ensure principal tracking is correct
+                uint256 balanceAfter = _getStakedBalanceHotkey(bestHotkey);
+                previousBalance = balanceAfter; // Update tracking
+
                 emit ValidatorSwitched(oldHotkey, bestHotkey, bestUid, reason);
             } else {
                 // Revert state changes on failure
@@ -615,7 +624,7 @@ contract SaintDurbin {
 
     /**
      * @notice Manually trigger validator check and switch
-     * @dev Can be called by anyone to force a validator check
+     * @dev Can only be called by emergency operator
      */
     function checkAndSwitchValidator()
         external
@@ -625,21 +634,21 @@ contract SaintDurbin {
     }
 
     /**
-     * @notice Request emergency drain with timelock (emergency operator only)
+     * @notice Request emergency drain with timelock (emergency operator or drain address)
      * @dev Added timelock mechanism for emergency drain
      */
-    function requestEmergencyDrain() external emergencyOperatorOrDrainAddress {
+    function requestEmergencyDrain() external onlyEmergencyOperator {
         emergencyDrainRequestedAt = block.timestamp;
         emit EmergencyDrainRequested(block.timestamp + EMERGENCY_TIMELOCK);
     }
 
     /**
      * @notice Execute emergency drain after timelock expires
-     * @dev Can only be executed after timelock period
+     * @dev Can only be executed by emergency operator after timelock period
      */
     function executeEmergencyDrain()
         external
-        emergencyOperatorOrDrainAddress
+        onlyEmergencyOperator
         nonReentrant
     {
         if (emergencyDrainRequestedAt <= 0) revert NoPendingRequest();
@@ -673,17 +682,10 @@ contract SaintDurbin {
 
     /**
      * @notice Cancel pending emergency drain request
-     * @dev Can be called by anyone to cancel a pending drain after double the timelock period
+     * @dev Can be called by emergency operator or drain address
      */
     function cancelEmergencyDrain() external emergencyOperatorOrDrainAddress {
         if (emergencyDrainRequestedAt <= 0) revert NoPendingRequest();
-
-        // Allow anyone to cancel if double the timelock has passed (48 hours)
-        require(
-            block.timestamp >=
-                emergencyDrainRequestedAt + (EMERGENCY_TIMELOCK * 2),
-            "Not authorized to cancel yet"
-        );
 
         emergencyDrainRequestedAt = 0;
         emit EmergencyDrainCancelled();
@@ -702,7 +704,6 @@ contract SaintDurbin {
     /**
      * @notice Internal helper to get staked balance
      */
-
     function _getStakedBalanceHotkey(
         bytes32 hotkey
     ) internal view returns (uint256) {

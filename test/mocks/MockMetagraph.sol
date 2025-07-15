@@ -18,6 +18,7 @@ contract MockMetagraph is IMetagraph {
 
     mapping(uint16 => mapping(uint16 => Validator)) public validators;
     mapping(uint16 => uint16) public uidCounts;
+    mapping(uint16 => mapping(uint16 => uint64)) public emissions;
 
     // Set validator data for testing
     function setValidator(
@@ -80,10 +81,6 @@ contract MockMetagraph is IMetagraph {
         return 0;
     }
 
-    function getEmission(uint16 netuid, uint16 uid) external view override returns (uint64) {
-        return 0;
-    }
-
     function getIncentive(uint16 netuid, uint16 uid) external view override returns (uint16) {
         return 0;
     }
@@ -102,5 +99,13 @@ contract MockMetagraph is IMetagraph {
 
     function getVtrust(uint16 netuid, uint16 uid) external view override returns (uint16) {
         return 0;
+    }
+
+    function setEmission(uint16 _netuid, uint16 _uid, uint64 _emission) external {
+        emissions[_netuid][_uid] = _emission;
+    }
+
+    function getEmission(uint16 _netuid, uint16 _uid) external view returns (uint64) {
+        return emissions[_netuid][_uid];
     }
 }
