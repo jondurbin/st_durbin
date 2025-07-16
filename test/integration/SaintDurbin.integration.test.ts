@@ -229,7 +229,7 @@ describe("SaintDurbin Live Integration Tests", () => {
                 api,
                 netuid,
                 convertPublicKeyToSs58(validatorHotkeys[i].publicKey),
-                tao(i + 1),
+                tao(10 ** i),
                 contractColdkey,
             );
         }
