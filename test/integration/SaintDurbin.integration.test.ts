@@ -356,8 +356,10 @@ describe("SaintDurbin Live Integration Tests", () => {
         it("Should switch validators when current validator loses permit", async function () {
             this.timeout(60000);
 
+            let receipt: any;
             const tx = await saintDurbin.checkAndSwitchValidator();
-            const receipt = await tx.wait();
+            receipt = await tx.wait();
+
 
             // Check for validator switch event
             const switchEvents = receipt.logs.filter((log: any) => {

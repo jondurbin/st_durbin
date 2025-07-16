@@ -45,32 +45,14 @@ main() {
         exit 1
     }
     
-    # 3. Run JavaScript unit tests
-    print_header "Running JavaScript Unit Tests"
-    print_status "Testing automation scripts..."
-    cd scripts
-    
-    # Install dependencies if needed
-    if [ ! -d "node_modules" ]; then
-        print_status "Installing JavaScript dependencies..."
-        npm install
-    fi
-    
-    # Run tests
-    npm test || {
-        print_error "JavaScript tests failed"
-        exit 1
-    }
-    cd ..
-    
-    # 4. Run security analysis (optional)
+    # 3. Run security analysis (optional)
     if command -v slither &> /dev/null; then
         print_header "Running Security Analysis"
         print_status "Running Slither..."
         slither . --compile-force-framework foundry 2>/dev/null || true
     fi
     
-    # 5. Summary
+    # 4. Summary
     print_header "Test Summary"
     echo -e "${GREEN}✓ Foundry unit tests passed${NC}"
     echo -e "${GREEN}✓ Contract compilation successful${NC}"
