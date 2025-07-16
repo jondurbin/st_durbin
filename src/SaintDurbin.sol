@@ -442,23 +442,23 @@ contract SaintDurbin {
         // }
 
         // Also check if the UID still has the same hotkey
-        // (success, returnData) = address(metagraph).staticcall(
-        //     abi.encodeWithSelector(
-        //         IMetagraph.getHotkey.selector,
-        //         netuid,
-        //         currentValidatorUid
-        //     )
-        // );
-        // if (!success) {
-        //     emit ValidatorCheckFailed("Failed to check UID hotkey");
-        //     return;
-        // }
-        // bytes32 uidHotkey = abi.decode(returnData, (bytes32));
-        // if (uidHotkey != currentValidatorHotkey) {
-        //     // UID has different hotkey, need to find new validator
-        //     _switchToNewValidator("Validator UID hotkey mismatch");
-        //     return;
-        // }
+        (bool success, bytes memory returnData) = address(metagraph).staticcall(
+            abi.encodeWithSelector(
+                IMetagraph.getHotkey.selector,
+                netuid,
+                currentValidatorUid
+            )
+        );
+        if (!success) {
+            emit ValidatorCheckFailed("Failed to check UID hotkey");
+            return;
+        }
+        bytes32 uidHotkey = abi.decode(returnData, (bytes32));
+        if (uidHotkey != currentValidatorHotkey) {
+            // UID has different hotkey, need to find new validator
+            _switchToNewValidator("Validator UID hotkey mismatch");
+            return;
+        }
 
         // // Check if validator is still active
         // (success, returnData) = address(metagraph).staticcall(
@@ -476,7 +476,6 @@ contract SaintDurbin {
         // }
         // bool isActive = abi.decode(returnData, (bool));
         // if (!isActive) {
-        emit ValidatorCheckFailed("1");
         _switchToNewValidator("Validator is inactive");
         // return;
         // }
@@ -513,7 +512,6 @@ contract SaintDurbin {
 
         for (uint16 uid = 0; uid < uidCount; uid++) {
             if (uid == currentValidatorUid) continue;
-            emit ValidatorCheckFailed("2");
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
                     IMetagraph.getValidatorStatus.selector,
@@ -524,8 +522,6 @@ contract SaintDurbin {
             if (!success) continue;
             bool isValidator = abi.decode(returnData, (bool));
             if (!isValidator) continue;
-
-            emit ValidatorCheckFailed("2.1");
 
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
@@ -538,7 +534,6 @@ contract SaintDurbin {
             bool isActive = abi.decode(returnData, (bool));
             if (!isActive) continue;
 
-            emit ValidatorCheckFailed("2.2");
             // Get emission
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
@@ -550,7 +545,6 @@ contract SaintDurbin {
             if (!success) continue;
             uint64 emission = abi.decode(returnData, (uint64));
             if (emission == 0) continue;
-            emit ValidatorCheckFailed("2.3");
 
             // Get stake
             (success, returnData) = address(metagraph).staticcall(
@@ -563,7 +557,6 @@ contract SaintDurbin {
             if (!success) continue;
             uint64 stake = abi.decode(returnData, (uint64));
             if (stake == 0) continue;
-            emit ValidatorCheckFailed("2.4");
             // Get dividends (validator take)
             (success, returnData) = address(metagraph).staticcall(
                 abi.encodeWithSelector(
@@ -574,11 +567,10 @@ contract SaintDurbin {
             );
             if (!success) continue;
             uint64 dividends = abi.decode(returnData, (uint64));
-            emit ValidatorCheckFailed("2.5");
             // Calculate yield score: (emission * dividends) / stake
             // This represents expected return per unit of stake
 
-            dividends is in basis points (0-65535 where 65535 = 100%)
+            // dividends is in basis points (0-65535 where 65535 = 100%)
             uint256 yieldScore = (uint256(emission) * uint256(dividends)) /
                 uint256(stake);
 
@@ -589,7 +581,6 @@ contract SaintDurbin {
             if (yieldScore > bestYieldScore) {
                 bestYieldScore = yieldScore;
                 bestUid = uid;
-                emit ValidatorCheckFailed("2.6");
                 // Get hotkey for best validator
                 (success, returnData) = address(metagraph).staticcall(
                     abi.encodeWithSelector(
@@ -600,23 +591,19 @@ contract SaintDurbin {
                 );
                 if (!success) continue;
                 bestHotkey = abi.decode(returnData, (bytes32));
-                emit ValidatorCheckFailed("2.7");
                 foundValid = true;
             }
         }
-        emit ValidatorCheckFailed("3");
         if (!foundValid || bestHotkey == bytes32(0)) {
             emit ValidatorCheckFailed("No valid validator found");
             return;
         }
-        emit ValidatorCheckFailed("4");
         // Get balance before move
         uint256 balanceBefore = _getStakedBalanceHotkey(currentValidatorHotkey);
 
         // Move stake to new validator
         uint256 currentStake = balanceBefore;
         if (currentStake > 0) {
-            emit ValidatorCheckFailed("5");
             // Update state variables BEFORE external call to prevent reentrancy
             bytes32 previousHotkey = currentValidatorHotkey;
             uint16 previousUid = currentValidatorUid;
