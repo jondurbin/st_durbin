@@ -422,63 +422,8 @@ contract SaintDurbin {
      * @dev Internal function that checks metagraph and moves stake if needed
      */
     function _checkAndSwitchValidator() internal {
-        // Check if current validator still has permit
-        // (bool success, bytes memory returnData) = address(metagraph).staticcall(
-        //     abi.encodeWithSelector(
-        //         IMetagraph.getValidatorStatus.selector,
-        //         netuid,
-        //         currentValidatorUid
-        //     )
-        // );
-        // if (!success) {
-        //     emit ValidatorCheckFailed("Failed to check validator status");
-        //     return;
-        // }
-        // bool isValidator = abi.decode(returnData, (bool));
-        // if (!isValidator) {
-        //     // Current validator lost permit, find new one
-        //     _switchToNewValidator("Validator lost permit");
-        //     return;
-        // }
-
-        // Also check if the UID still has the same hotkey
-        (bool success, bytes memory returnData) = address(metagraph).staticcall(
-            abi.encodeWithSelector(
-                IMetagraph.getHotkey.selector,
-                netuid,
-                currentValidatorUid
-            )
-        );
-        if (!success) {
-            emit ValidatorCheckFailed("Failed to check UID hotkey");
-            return;
-        }
-        bytes32 uidHotkey = abi.decode(returnData, (bytes32));
-        if (uidHotkey != currentValidatorHotkey) {
-            // UID has different hotkey, need to find new validator
-            _switchToNewValidator("Validator UID hotkey mismatch");
-            return;
-        }
-
-        // // Check if validator is still active
-        // (success, returnData) = address(metagraph).staticcall(
-        //     abi.encodeWithSelector(
-        //         IMetagraph.getIsActive.selector,
-        //         netuid,
-        //         currentValidatorUid
-        //     )
-        // );
-        // if (!success) {
-        //     emit ValidatorCheckFailed(
-        //         "Failed to check validator active status"
-        //     );
-        //     return;
-        // }
-        // bool isActive = abi.decode(returnData, (bool));
-        // if (!isActive) {
-        _switchToNewValidator("Validator is inactive");
-        // return;
-        // }
+        _switchToNewValidator("Requested by emergency operator or wallet");
+        return;
     }
 
     /**

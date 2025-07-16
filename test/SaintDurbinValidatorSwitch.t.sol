@@ -90,152 +90,8 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
     }
 
-    function testValidatorLosesPermit() public {
-        // Set up alternative validators with proper emission values
-        // Validator2: emission=100e9, stake=2000e9, dividend=15000
-        // Yield score = (100e9 * 15000) / 2000e9 = 750
-        mockMetagraph.setValidator(
-            netuid,
-            validator2Uid,
-            true,
-            true,
-            validator2Hotkey,
-            uint64(2000e9),
-            15000
-        );
-        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
-
-        // Validator3: emission=80e9, stake=1500e9, dividend=12000
-        // Yield score = (80e9 * 12000) / 1500e9 = 640
-        mockMetagraph.setValidator(
-            netuid,
-            validator3Uid,
-            true,
-            true,
-            validator3Hotkey,
-            uint64(1500e9),
-            12000
-        );
-        mockMetagraph.setEmission(netuid, validator3Uid, uint64(80e9));
-
-        // Current validator loses permit
-        mockMetagraph.setValidator(
-            netuid,
-            validatorUid,
-            false,
-            true,
-            validatorHotkey,
-            uint64(1000e9),
-            10000
-        );
-
-        // Expect the validator switch event - validator2 has higher yield score
-        vm.expectEmit(true, true, false, true);
-        emit ValidatorSwitched(
-            validatorHotkey,
-            validator2Hotkey,
-            validator2Uid,
-            "Validator lost permit"
-        );
-
-        // Call checkAndSwitchValidator
-        vm.prank(emergencyOperator);
-        saintDurbin.checkAndSwitchValidator();
-
-        // Verify validator was switched
-        assertEq(saintDurbin.currentValidatorHotkey(), validator2Hotkey);
-        assertEq(saintDurbin.currentValidatorUid(), validator2Uid);
-    }
-
-    function testValidatorBecomesInactive() public {
-        // Set up alternative validator with emission
-        mockMetagraph.setValidator(
-            netuid,
-            validator2Uid,
-            true,
-            true,
-            validator2Hotkey,
-            uint64(2000e9),
-            15000
-        );
-        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
-
-        // Current validator becomes inactive
-        mockMetagraph.setValidator(
-            netuid,
-            validatorUid,
-            true,
-            false,
-            validatorHotkey,
-            uint64(1000e9),
-            10000
-        );
-
-        // Expect the validator switch event
-        vm.expectEmit(true, true, false, true);
-        emit ValidatorSwitched(
-            validatorHotkey,
-            validator2Hotkey,
-            validator2Uid,
-            "Validator is inactive"
-        );
-
-        // Call checkAndSwitchValidator
-        vm.prank(emergencyOperator);
-        saintDurbin.checkAndSwitchValidator();
-
-        // Verify validator was switched
-        assertEq(saintDurbin.currentValidatorHotkey(), validator2Hotkey);
-        assertEq(saintDurbin.currentValidatorUid(), validator2Uid);
-    }
-
-    function testValidatorUidHotkeyMismatch() public {
-        // Set up alternative validator with emission
-        mockMetagraph.setValidator(
-            netuid,
-            validator2Uid,
-            true,
-            true,
-            validator2Hotkey,
-            uint64(2000e9),
-            15000
-        );
-        mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
-
-        // Change the hotkey for the current UID (simulating UID reassignment)
-        bytes32 differentHotkey = bytes32(uint256(0x666));
-        mockMetagraph.setValidator(
-            netuid,
-            validatorUid,
-            true,
-            true,
-            differentHotkey,
-            uint64(1000e9),
-            10000
-        );
-
-        // Expect the validator switch event
-        vm.expectEmit(true, true, false, true);
-        emit ValidatorSwitched(
-            validatorHotkey,
-            validator2Hotkey,
-            validator2Uid,
-            "Validator UID hotkey mismatch"
-        );
-
-        // Call checkAndSwitchValidator
-        vm.prank(emergencyOperator);
-        saintDurbin.checkAndSwitchValidator();
-
-        // Verify validator was switched
-        assertEq(saintDurbin.currentValidatorHotkey(), validator2Hotkey);
-        assertEq(saintDurbin.currentValidatorUid(), validator2Uid);
-    }
-
     function testSelectBestValidator() public {
         // Set up multiple validators with different yield scores
-        // Validator 2: emission=100e9, stake=2000e9, dividend=15000
-        // Yield score = (100e9 * 15000) / 2000e9 = 750
         mockMetagraph.setValidator(
             netuid,
             validator2Uid,
@@ -247,8 +103,6 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
         mockMetagraph.setEmission(netuid, validator2Uid, uint64(100e9));
 
-        // Validator 3: emission=150e9, stake=1500e9, dividend=10000
-        // Yield score = (150e9 * 10000) / 1500e9 = 1000 (HIGHEST)
         mockMetagraph.setValidator(
             netuid,
             validator3Uid,
@@ -260,24 +114,12 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
         mockMetagraph.setEmission(netuid, validator3Uid, uint64(150e9));
 
-        // Current validator loses permit
-        mockMetagraph.setValidator(
-            netuid,
-            validatorUid,
-            false,
-            true,
-            validatorHotkey,
-            uint64(1000e9),
-            10000
-        );
-
-        // Should select validator3 as it has the highest yield score
         vm.expectEmit(true, true, false, true);
         emit ValidatorSwitched(
             validatorHotkey,
             validator3Hotkey,
             validator3Uid,
-            "Validator lost permit"
+            "Requested by emergency operator or wallet"
         );
 
         // Call checkAndSwitchValidator
