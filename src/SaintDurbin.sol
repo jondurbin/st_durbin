@@ -229,13 +229,13 @@ contract SaintDurbin {
             availableYield = currentBalance - principalLocked;
         }
 
+        uint256 blocksSinceLastTransfer = block.number - lastTransferBlock;
         // Enhanced principal detection with cumulative tracking
         if (
             lastPaymentAmount > 0 &&
             previousBalance > 0 &&
             currentBalance > principalLocked
         ) {
-            uint256 blocksSinceLastTransfer = block.number - lastTransferBlock;
             uint256 currentRate = (availableYield * 1e18) /
                 blocksSinceLastTransfer;
 
@@ -262,7 +262,6 @@ contract SaintDurbin {
             lastRewardRate = currentRate;
         } else if (currentBalance > principalLocked) {
             // First transfer or establishing baseline rate
-            uint256 blocksSinceLastTransfer = block.number - lastTransferBlock;
             if (blocksSinceLastTransfer > 0) {
                 lastRewardRate =
                     (availableYield * 1e18) /
