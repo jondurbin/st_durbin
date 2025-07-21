@@ -193,7 +193,9 @@ contract SaintDurbin {
      * It will be called after the swap coldkey
      * @param _thisSs58PublicKey The new SS58 public key to set
      */
-    function setThisSs58PublicKey(bytes32 _thisSs58PublicKey) external {
+    function setThisSs58PublicKey(
+        bytes32 _thisSs58PublicKey
+    ) external onlyEmergencyOperator {
         if (ss58PublicKeySet) revert SS58KeyAlreadySet();
         if (_thisSs58PublicKey == bytes32(0)) revert InvalidAddress();
 
