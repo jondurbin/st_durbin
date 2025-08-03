@@ -5,11 +5,15 @@ import "forge-std/Test.sol";
 import "../src/SaintDurbin.sol";
 import "./mocks/MockStaking.sol";
 import "./mocks/MockMetagraph.sol";
+import "./mocks/MockStorageQuery.sol";
+import "./mocks/MockBlakeTwo128.sol";
 
 contract SaintDurbinTest is Test {
     SaintDurbin public saintDurbin;
     MockStaking public mockStaking;
     MockMetagraph public mockMetagraph;
+    MockStorageQuery public mockStorageQuery;
+    MockBlakeTwo128 public mockBlakeTwo128;
 
     address owner = address(0x1);
     address emergencyOperator = address(0x2);
@@ -47,8 +51,28 @@ contract SaintDurbinTest is Test {
         vm.etch(address(0x802), type(MockMetagraph).runtimeCode);
         mockMetagraph = MockMetagraph(address(0x802));
 
+        // Deploy mock storage query at the expected address
+        vm.etch(address(0x807), type(MockStorageQuery).runtimeCode);
+        mockStorageQuery = MockStorageQuery(payable(address(0x807)));
+
+        vm.etch(address(0x0A), type(MockBlakeTwo128).runtimeCode);
+        mockBlakeTwo128 = MockBlakeTwo128(payable(address(0x0A)));
+
         // Set up the validator in the metagraph
-        mockMetagraph.setValidator(netuid, validatorUid, true, true, validatorHotkey, uint64(1000e9), 10000);
+        mockMetagraph.setValidator(
+            netuid,
+            validatorUid,
+            true,
+            true,
+            validatorHotkey,
+            uint64(1000e9),
+            10000
+        );
+
+        mockStorageQuery.setTotalHotkeyAlpha(1000000000e9);
+        mockStorageQuery.setDelegates(10000);
+
+        mockMetagraph.setEmission(netuid, validatorUid, 100e9);
 
         // Setup recipients - 16 total
         recipientColdkeys = new bytes32[](16);
@@ -88,11 +112,21 @@ contract SaintDurbinTest is Test {
         mockStaking.setValidator(validatorHotkey, netuid, true);
 
         // Set initial stake for the empty key (will be used during constructor)
-        mockStaking.setStake(bytes32(0), validatorHotkey, netuid, INITIAL_STAKE);
+        mockStaking.setStake(
+            bytes32(0),
+            validatorHotkey,
+            netuid,
+            INITIAL_STAKE
+        );
 
         // Deploy SaintDurbin
         // Move stake before deployment so initial principal is set correctly
-        mockStaking.setStake(contractSs58Key, validatorHotkey, netuid, INITIAL_STAKE);
+        mockStaking.setStake(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            INITIAL_STAKE
+        );
 
         saintDurbin = new SaintDurbin(
             emergencyOperator,
@@ -140,7 +174,12 @@ contract SaintDurbinTest is Test {
     function testSuccessfulYieldDistribution() public {
         // Add yield
         uint256 yieldAmount = 1000e9; // 1,000 TAO yield
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, yieldAmount);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            yieldAmount
+        );
 
         // Advance blocks
         vm.roll(block.number + 7200);
@@ -166,7 +205,12 @@ contract SaintDurbinTest is Test {
     function testFallbackToLastPaymentAmount() public {
         // First, make a successful transfer with yield
         uint256 firstYield = 1000e9; // 1,000 TAO
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, firstYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            firstYield
+        );
 
         // Advance blocks and execute first transfer
         vm.roll(block.number + 7200);
@@ -188,14 +232,20 @@ contract SaintDurbinTest is Test {
 
         // Verify the amounts are the same as the first transfer
         // Check Sam's second transfer (index 16) matches first (index 0)
-        MockStaking.Transfer memory firstSamTransfer = mockStaking.getTransfer(0);
-        MockStaking.Transfer memory secondSamTransfer = mockStaking.getTransfer(16);
+        MockStaking.Transfer memory firstSamTransfer = mockStaking.getTransfer(
+            0
+        );
+        MockStaking.Transfer memory secondSamTransfer = mockStaking.getTransfer(
+            16
+        );
         assertEq(secondSamTransfer.amount, firstSamTransfer.amount);
         assertEq(secondSamTransfer.amount, (firstYield * 100) / 10000); // Still 1% of original yield
 
         // Check Paper's second transfer matches first
-        MockStaking.Transfer memory firstPaperTransfer = mockStaking.getTransfer(2);
-        MockStaking.Transfer memory secondPaperTransfer = mockStaking.getTransfer(18);
+        MockStaking.Transfer memory firstPaperTransfer = mockStaking
+            .getTransfer(2);
+        MockStaking.Transfer memory secondPaperTransfer = mockStaking
+            .getTransfer(18);
         assertEq(secondPaperTransfer.amount, firstPaperTransfer.amount);
         assertEq(secondPaperTransfer.amount, (firstYield * 500) / 10000); // Still 5% of original yield
     }
@@ -284,7 +334,12 @@ contract SaintDurbinTest is Test {
     function testViewFunctions() public {
         // Add yield
         uint256 yieldAmount = 500e9;
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, yieldAmount);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            yieldAmount
+        );
 
         // Test getStakedBalance
         assertEq(saintDurbin.getStakedBalance(), INITIAL_STAKE + yieldAmount);
@@ -325,7 +380,12 @@ contract SaintDurbinTest is Test {
     function testExistentialAmountCheck() public {
         // Add yield below existential amount
         uint256 tinyYield = 0.5e9; // 0.5 TAO
-        mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, tinyYield);
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            tinyYield
+        );
 
         // Advance blocks
         vm.roll(block.number + 7200);
@@ -354,7 +414,11 @@ contract SaintDurbinTest is Test {
 
         // Execute transfer - should emit TransferFailed with "Transfer failed"
         vm.expectEmit(false, false, false, true);
-        emit TransferFailed(recipientColdkeys[0], 10000000000, "Transfer failed"); // 1% of 1000 TAO
+        emit TransferFailed(
+            recipientColdkeys[0],
+            10000000000,
+            "Transfer failed"
+        ); // 1% of 1000 TAO
 
         saintDurbin.executeTransfer();
     }
@@ -403,7 +467,8 @@ contract SaintDurbinTest is Test {
 
     function testGetCurrentValidatorInfo() public {
         // Test current validator info
-        (bytes32 hotkey, uint16 uid, bool isValid) = saintDurbin.getCurrentValidatorInfo();
+        (bytes32 hotkey, uint16 uid, bool isValid) = saintDurbin
+            .getCurrentValidatorInfo();
         assertEq(hotkey, validatorHotkey);
         assertEq(uid, validatorUid);
         // Note: isValid will be false since we haven't set up the metagraph mock yet
@@ -418,5 +483,9 @@ contract SaintDurbinTest is Test {
     }
 
     // Event declaration for tests
-    event TransferFailed(bytes32 indexed coldkey, uint256 amount, string reason);
+    event TransferFailed(
+        bytes32 indexed coldkey,
+        uint256 amount,
+        string reason
+    );
 }

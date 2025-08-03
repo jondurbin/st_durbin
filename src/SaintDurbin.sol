@@ -20,6 +20,15 @@ contract SaintDurbin {
     uint256 constant EMERGENCY_TIMELOCK = 86400; // 24 hours timelock for emergency drain
     uint256 constant MIN_UID_COUNT_FOR_SWITCH = 6; // current validator and top 5 validators
 
+    address constant IBlakeTwo128_ADDRESS =
+        address(0x000000000000000000000000000000000000000A);
+    address constant IStorageQuery_ADDRESS =
+        address(0x0000000000000000000000000000000000000807);
+
+    bytes16 constant SUBTENSOR_PREFIX = 0x658faa385070e074c85bf6b568cf0555;
+    bytes16 constant DELEGATES_PREFIX = 0x60d1f0ff648e4c86ea413fc0173d4038; // get validator take
+    bytes16 constant TOTAL_HOTKEY_ALPHA_PREFIX =
+        0xee25c3b5b1886863480497907f1829e6; // get total hotkey alpha
     // ========== State Variables ==========
 
     // Core configuration
@@ -212,68 +221,49 @@ contract SaintDurbin {
     function executeTransfer() external nonReentrant {
         if (!canExecuteTransfer()) revert TransferTooSoon();
 
+        // Alpha of hotkey and coldkey in subnet
         uint256 currentBalance = _getStakedBalanceHotkey(
             currentValidatorHotkey
         );
-        uint256 availableYield;
 
         // If balance hasn't changed, use last payment amount as fallback
         if (currentBalance <= principalLocked) {
-            if (lastPaymentAmount > 0) {
-                availableYield = lastPaymentAmount;
-            } else {
-                // No yield and no previous payment to fall back to
-                lastTransferBlock = block.number;
-                previousBalance = currentBalance;
-                return;
-            }
+            // No yield and no previous payment to fall back to
+            lastTransferBlock = block.number;
+            previousBalance = currentBalance;
+            return;
+        }
+
+        uint256 totalStakedBalance = getTotalHotkeyAlpha(
+            currentValidatorHotkey,
+            netuid
+        );
+
+        require(
+            totalStakedBalance >= currentBalance,
+            "Total staked balance is less than current validator hotkey"
+        );
+
+        // uint256 emission = 0;
+
+        uint256 emission = _getEmission(netuid, currentValidatorUid);
+
+        uint256 validatorTake = getValidatorTake(currentValidatorHotkey);
+
+        uint256 rewardEstimate = emission - (emission * validatorTake) / 65535;
+
+        uint256 yieldEstimate = (rewardEstimate *
+            (block.number - lastTransferBlock)) / 360;
+
+        uint256 increasedBalance = currentBalance - principalLocked;
+
+        uint256 availableYield;
+        if (yieldEstimate > increasedBalance) {
+            availableYield = increasedBalance;
         } else {
-            availableYield = currentBalance - principalLocked;
+            availableYield = yieldEstimate;
         }
 
-        uint256 blocksSinceLastTransfer = block.number - lastTransferBlock;
-        // Enhanced principal detection with cumulative tracking
-        if (
-            lastPaymentAmount > 0 &&
-            previousBalance > 0 &&
-            currentBalance > principalLocked
-        ) {
-            uint256 currentRate = (availableYield * 1e18) /
-                blocksSinceLastTransfer;
-
-            // Track cumulative balance increases
-            if (currentBalance > previousBalance) {
-                uint256 increase = currentBalance - previousBalance;
-                cumulativeBalanceIncrease += increase;
-            }
-
-            // Enhanced principal detection: check both rate multiplier and absolute threshold
-            bool rateBasedDetection = lastRewardRate > 0 &&
-                currentRate > (lastRewardRate * RATE_MULTIPLIER_THRESHOLD);
-            bool absoluteDetection = availableYield > lastPaymentAmount * 3; // Detect if yield is 3x previous payment
-
-            if (rateBasedDetection || absoluteDetection) {
-                // Principal addition detected
-                uint256 detectedPrincipal = availableYield - lastPaymentAmount;
-                principalLocked += detectedPrincipal;
-                availableYield = lastPaymentAmount; // Use previous payment amount
-
-                emit PrincipalDetected(detectedPrincipal, principalLocked);
-            }
-
-            lastRewardRate = currentRate;
-        } else if (currentBalance > principalLocked) {
-            // First transfer or establishing baseline rate
-            if (blocksSinceLastTransfer > 0) {
-                lastRewardRate =
-                    (availableYield * 1e18) /
-                    blocksSinceLastTransfer;
-            }
-        }
-
-        lastBalanceCheckBlock = block.number;
-
-        // Check if yield is below existential amount
         if (availableYield < EXISTENTIAL_AMOUNT) {
             lastTransferBlock = block.number;
             previousBalance = currentBalance;
@@ -284,9 +274,9 @@ contract SaintDurbin {
         uint256 totalTransferred = 0;
         uint256 remainingYield = availableYield;
 
-        // Gas optimization - cache recipients length
         uint256 recipientsLength = recipients.length;
 
+        // Gas optimization - cache recipients length
         for (uint256 i = 0; i < recipientsLength; i++) {
             uint256 recipientAmount;
 
@@ -331,6 +321,7 @@ contract SaintDurbin {
 
         // Update tracking - get balance BEFORE updating state to prevent reentrancy issues
         uint256 newBalance = _getStakedBalanceHotkey(currentValidatorHotkey);
+        principalLocked = newBalance;
         lastTransferBlock = block.number;
         lastPaymentAmount = totalTransferred;
         previousBalance = newBalance;
@@ -681,6 +672,37 @@ contract SaintDurbin {
     }
 
     /**
+     * @notice Internal helper to get totalstaked balance
+     */
+    function _getTotalStakedBalanceHotkey(
+        bytes32 hotkey
+    ) internal view returns (uint256) {
+        (bool success, bytes memory returnData) = address(staking).staticcall(
+            abi.encodeWithSelector(
+                IStaking.getTotalHotkeyStake.selector,
+                hotkey,
+                netuid
+            )
+        );
+        require(success, "Precompile call failed: getTotalHotkeyStake");
+        return abi.decode(returnData, (uint256));
+    }
+
+    /**
+     * @notice Internal helper to get emission
+     */
+    function _getEmission(
+        uint256 netuid,
+        uint256 uid
+    ) internal view returns (uint256) {
+        (bool success, bytes memory returnData) = address(metagraph).staticcall(
+            abi.encodeWithSelector(IMetagraph.getEmission.selector, netuid, uid)
+        );
+        require(success, "Precompile call failed: getEmission");
+        return abi.decode(returnData, (uint256));
+    }
+
+    /**
      * @notice Get the amount that will be transferred in the next distribution
      * @return The next transfer amount
      */
@@ -821,5 +843,72 @@ contract SaintDurbin {
         } else {
             timeRemaining = 0;
         }
+    }
+
+    function getDelegatesStorageKey(
+        bytes32 hotkey
+    ) public returns (bytes memory) {
+        (bool success, bytes memory returnData) = IBlakeTwo128_ADDRESS.call(
+            abi.encode(hotkey)
+        );
+        require(success, "Precompile call failed: blake2_128");
+
+        bytes memory result = bytes.concat(
+            SUBTENSOR_PREFIX,
+            DELEGATES_PREFIX,
+            returnData,
+            hotkey
+        );
+        return result;
+    }
+
+    function getTotalHotkeyAlphaStorageKey(
+        bytes32 hotkey,
+        uint16 netuid
+    ) public returns (bytes memory) {
+        (bool success, bytes memory returnData) = IBlakeTwo128_ADDRESS.call(
+            abi.encode(hotkey)
+        );
+
+        require(success, "Precompile call failed: blake2_128");
+
+        bytes2 netuidBytes = bytes2(netuid);
+
+        bytes memory result = bytes.concat(
+            SUBTENSOR_PREFIX,
+            TOTAL_HOTKEY_ALPHA_PREFIX,
+            returnData,
+            hotkey,
+            netuidBytes
+        );
+        return result;
+    }
+
+    function getValidatorTake(bytes32 hotkey) public returns (uint16) {
+        bytes memory storageKey = getDelegatesStorageKey(hotkey);
+        (bool success, bytes memory returnData) = IStorageQuery_ADDRESS.call(
+            storageKey
+        );
+        require(
+            success,
+            "Precompile call failed: Query Delegates via storage query precompile"
+        );
+        return abi.decode(returnData, (uint16));
+    }
+
+    function getTotalHotkeyAlpha(
+        bytes32 hotkey,
+        uint16 netuid
+    ) public returns (uint256) {
+        bytes memory storageKey = getTotalHotkeyAlphaStorageKey(hotkey, netuid);
+
+        (bool success, bytes memory returnData) = IStorageQuery_ADDRESS.call(
+            storageKey
+        );
+        require(
+            success,
+            "Precompile call failed: Query TotalHotkeyAlpha via storage query precompile"
+        );
+        return abi.decode(returnData, (uint256));
     }
 }
