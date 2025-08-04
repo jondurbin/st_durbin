@@ -25,6 +25,8 @@ contract SaintDurbinPrincipalTest is Test {
     uint16 netuid = 1;
     uint16 validatorUid = 123;
 
+    bytes16 validatorHotkeyHash = bytes16(uint128(0x555));
+
     bytes32[] recipientColdkeys;
     uint256[] proportions;
 
@@ -94,6 +96,7 @@ contract SaintDurbinPrincipalTest is Test {
             validatorUid,
             contractSs58Key,
             netuid,
+            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );

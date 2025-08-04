@@ -29,6 +29,8 @@ contract SaintDurbinValidatorSwitchTest is Test {
     bytes32 validator3Hotkey = bytes32(uint256(0x779));
     uint16 validator3Uid = 125;
 
+    bytes16 validatorHotkeyHash = bytes16(uint128(0x555));
+
     bytes32[] recipientColdkeys;
     uint256[] proportions;
 
@@ -101,6 +103,7 @@ contract SaintDurbinValidatorSwitchTest is Test {
             validatorUid,
             contractSs58Key,
             netuid,
+            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );

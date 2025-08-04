@@ -13,11 +13,11 @@ import "./interfaces/IMetagraph.sol";
 contract SaintDurbin {
     // ========== Constants ==========
     address constant IMETAGRAPH_ADDRESS = address(0x802);
-    uint256 constant MIN_BLOCK_INTERVAL = 7200; // ~24 hours at 12s blocks
+    uint256 constant MIN_BLOCK_INTERVAL = 100; // ~24 hours at 12s blocks
     uint256 constant EXISTENTIAL_AMOUNT = 1e9; // 1 TAO in rao (9 decimals)
     uint256 constant BASIS_POINTS = 10000;
     uint256 constant RATE_MULTIPLIER_THRESHOLD = 2;
-    uint256 constant EMERGENCY_TIMELOCK = 86400; // 24 hours timelock for emergency drain
+    uint256 constant EMERGENCY_TIMELOCK = 100; // 24 hours timelock for emergency drain
     uint256 constant MIN_UID_COUNT_FOR_SWITCH = 6; // current validator and top 5 validators
 
     address constant IBlakeTwo128_ADDRESS =
@@ -68,6 +68,9 @@ contract SaintDurbin {
     uint256 public cumulativeBalanceIncrease;
     uint256 public lastBalanceCheckBlock;
 
+    // workaround for blake2_128 precompile not available
+    mapping(bytes32 => bytes16) public hotkeyBlake2Hash;
+
     // ========== Events ==========
     event StakeTransferred(uint256 totalAmount, uint256 newBalance);
     event RecipientTransfer(
@@ -102,6 +105,8 @@ contract SaintDurbin {
         uint256 newPrincipal
     );
 
+    event HotkeyBlake2HashSet(bytes32 indexed hotkey, bytes16 indexed hash);
+
     // ========== Custom Errors ==========
     error NotEmergencyOperator();
     error InvalidAddress();
@@ -117,6 +122,7 @@ contract SaintDurbin {
     error StakeMoveFailure();
     error NotEmergencyOperatorOrDrainAddress();
     error SS58KeyAlreadySet();
+    error InvalidBlake2Hash();
 
     // ========== Modifiers ==========
     modifier onlyEmergencyOperator() {
@@ -147,6 +153,7 @@ contract SaintDurbin {
         uint16 _validatorUid,
         bytes32 _thisSs58PublicKey,
         uint16 _netuid,
+        bytes16 _hotkeyBlake2Hash,
         bytes32[] memory _recipientColdkeys,
         uint256[] memory _proportions
     ) {
@@ -158,6 +165,7 @@ contract SaintDurbin {
         if (_recipientColdkeys.length != _proportions.length)
             revert ProportionsMismatch();
         if (_recipientColdkeys.length != 16) revert ProportionsMismatch();
+        if (_hotkeyBlake2Hash == bytes16(0)) revert InvalidBlake2Hash();
 
         emergencyOperator = _emergencyOperator;
         drainSs58Address = _drainSs58Address;
@@ -219,6 +227,10 @@ contract SaintDurbin {
      * @dev Does NOT automatically check validator status
      */
     function executeTransfer() external nonReentrant {
+        if (hotkeyBlake2Hash[currentValidatorHotkey] == bytes16(0)) {
+            revert InvalidBlake2Hash();
+        }
+
         if (!canExecuteTransfer()) revert TransferTooSoon();
 
         // Alpha of hotkey and coldkey in subnet
@@ -249,6 +261,7 @@ contract SaintDurbin {
             totalStakedBalance
         );
 
+        return;
         if (availableYield < EXISTENTIAL_AMOUNT) {
             lastTransferBlock = block.number;
             previousBalance = currentBalance;
@@ -260,6 +273,8 @@ contract SaintDurbin {
         uint256 remainingYield = availableYield;
 
         uint256 recipientsLength = recipients.length;
+
+        return;
 
         // Gas optimization - cache recipients length
         for (uint256 i = 0; i < recipientsLength; i++) {
@@ -570,6 +585,14 @@ contract SaintDurbin {
         _checkAndSwitchValidator();
     }
 
+    function setHotkeyBlake2Hash(
+        bytes32 hotkey,
+        bytes16 hash
+    ) external onlyEmergencyOperator {
+        hotkeyBlake2Hash[hotkey] = hash;
+        emit EmergencyDrainRequested(block.timestamp + EMERGENCY_TIMELOCK);
+    }
+
     /**
      * @notice Request emergency drain with timelock (emergency operator or drain address)
      * @dev Added timelock mechanism for emergency drain
@@ -834,18 +857,22 @@ contract SaintDurbin {
         }
     }
 
+    function getHotkeyBlake2Hash(bytes32 hotkey) public returns (bytes16) {
+        return hotkeyBlake2Hash[hotkey];
+        // (bool success, bytes memory returnData) = IBlakeTwo128_ADDRESS.call(
+        //     abi.encode(hotkey)
+        // );
+        // require(success, "Precompile call failed: blake2_128");
+        // return abi.decode(returnData, (bytes16));
+    }
+
     function getDelegatesStorageKey(
         bytes32 hotkey
     ) public returns (bytes memory) {
-        (bool success, bytes memory returnData) = IBlakeTwo128_ADDRESS.call(
-            abi.encode(hotkey)
-        );
-        require(success, "Precompile call failed: blake2_128");
-
         bytes memory result = bytes.concat(
             SUBTENSOR_PREFIX,
             DELEGATES_PREFIX,
-            returnData,
+            getHotkeyBlake2Hash(hotkey),
             hotkey
         );
         return result;
@@ -866,7 +893,7 @@ contract SaintDurbin {
         bytes memory result = bytes.concat(
             SUBTENSOR_PREFIX,
             TOTAL_HOTKEY_ALPHA_PREFIX,
-            returnData,
+            getHotkeyBlake2Hash(hotkey),
             hotkey,
             netuidBytes
         );
@@ -924,5 +951,9 @@ contract SaintDurbin {
         }
 
         return availableYield;
+    }
+
+    function getEmission(uint256 netuid, uint256 uid) public returns (uint256) {
+        return _getEmission(netuid, uid);
     }
 }

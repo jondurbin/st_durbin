@@ -28,6 +28,7 @@ contract SaintDurbinTest is Test {
     bytes32 contractSs58Key = bytes32(uint256(0x888));
     uint16 netuid = 1;
     uint16 validatorUid = 123;
+    bytes16 validatorHotkeyHash = bytes16(uint128(0x555));
 
     bytes32[] recipientColdkeys;
     uint256[] proportions;
@@ -136,6 +137,7 @@ contract SaintDurbinTest is Test {
             validatorUid,
             contractSs58Key,
             netuid,
+            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
@@ -441,6 +443,7 @@ contract SaintDurbinTest is Test {
             validatorUid,
             bytes32(0), // Invalid SS58 key
             netuid,
+            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
