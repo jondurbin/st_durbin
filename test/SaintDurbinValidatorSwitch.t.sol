@@ -5,11 +5,15 @@ import "forge-std/Test.sol";
 import "../src/SaintDurbin.sol";
 import "./mocks/MockStaking.sol";
 import "./mocks/MockMetagraph.sol";
+import "./mocks/MockStorageQuery.sol";
+import "./mocks/MockBlakeTwo128.sol";
 
 contract SaintDurbinValidatorSwitchTest is Test {
     SaintDurbin public saintDurbin;
     MockStaking public mockStaking;
     MockMetagraph public mockMetagraph;
+    MockStorageQuery public mockStorageQuery;
+    MockBlakeTwo128 public mockBlakeTwo128;
 
     address emergencyOperator = address(0x2);
     address drainAddress = address(0x4);
@@ -47,6 +51,13 @@ contract SaintDurbinValidatorSwitchTest is Test {
         vm.etch(address(0x802), type(MockMetagraph).runtimeCode);
         mockMetagraph = MockMetagraph(address(0x802));
 
+        // Deploy mock storage query at the expected address
+        vm.etch(address(0x807), type(MockStorageQuery).runtimeCode);
+        mockStorageQuery = MockStorageQuery(payable(address(0x807)));
+
+        vm.etch(address(0x0A), type(MockBlakeTwo128).runtimeCode);
+        mockBlakeTwo128 = MockBlakeTwo128(payable(address(0x0A)));
+
         // Setup recipients
         recipientColdkeys = new bytes32[](16);
         proportions = new uint256[](16);
@@ -75,6 +86,11 @@ contract SaintDurbinValidatorSwitchTest is Test {
             netuid,
             INITIAL_STAKE
         );
+
+        mockStorageQuery.setTotalHotkeyAlpha(1000000000e9);
+        mockStorageQuery.setDelegates(10000);
+
+        mockMetagraph.setEmission(netuid, validatorUid, 100e9);
 
         // Deploy SaintDurbin
         saintDurbin = new SaintDurbin(

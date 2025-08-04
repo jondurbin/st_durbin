@@ -220,6 +220,13 @@ contract SaintDurbinTest is Test {
         uint256 firstTransferCount = mockStaking.getTransferCount();
         assertEq(firstTransferCount, 16);
 
+        mockStaking.addYield(
+            contractSs58Key,
+            validatorHotkey,
+            netuid,
+            firstYield
+        );
+
         // Now advance blocks again but don't add any new yield
         vm.roll(block.number + 7200);
 
@@ -241,7 +248,7 @@ contract SaintDurbinTest is Test {
         assertEq(secondSamTransfer.amount, firstSamTransfer.amount);
         assertEq(secondSamTransfer.amount, (firstYield * 100) / 10000); // Still 1% of original yield
 
-        // Check Paper's second transfer matches first
+        // // Check Paper's second transfer matches first
         MockStaking.Transfer memory firstPaperTransfer = mockStaking
             .getTransfer(2);
         MockStaking.Transfer memory secondPaperTransfer = mockStaking

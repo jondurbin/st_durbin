@@ -244,25 +244,10 @@ contract SaintDurbin {
             "Total staked balance is less than current validator hotkey"
         );
 
-        // uint256 emission = 0;
-
-        uint256 emission = _getEmission(netuid, currentValidatorUid);
-
-        uint256 validatorTake = getValidatorTake(currentValidatorHotkey);
-
-        uint256 rewardEstimate = emission - (emission * validatorTake) / 65535;
-
-        uint256 yieldEstimate = (rewardEstimate *
-            (block.number - lastTransferBlock)) / 360;
-
-        uint256 increasedBalance = currentBalance - principalLocked;
-
-        uint256 availableYield;
-        if (yieldEstimate > increasedBalance) {
-            availableYield = increasedBalance;
-        } else {
-            availableYield = yieldEstimate;
-        }
+        uint256 availableYield = getAvailableYield(
+            currentBalance,
+            totalStakedBalance
+        );
 
         if (availableYield < EXISTENTIAL_AMOUNT) {
             lastTransferBlock = block.number;
@@ -688,6 +673,10 @@ contract SaintDurbin {
         return abi.decode(returnData, (uint256));
     }
 
+    function getTotalStakedBalance() public view returns (uint256) {
+        return _getTotalStakedBalanceHotkey(currentValidatorHotkey);
+    }
+
     /**
      * @notice Internal helper to get emission
      */
@@ -910,5 +899,30 @@ contract SaintDurbin {
             "Precompile call failed: Query TotalHotkeyAlpha via storage query precompile"
         );
         return abi.decode(returnData, (uint256));
+    }
+
+    function getAvailableYield(
+        uint256 currentBalance,
+        uint256 totalStakedBalance
+    ) public returns (uint256) {
+        uint256 emission = _getEmission(netuid, currentValidatorUid);
+
+        uint256 validatorTake = getValidatorTake(currentValidatorHotkey);
+
+        uint256 rewardEstimate = emission - (emission * validatorTake) / 65535;
+
+        uint256 yieldEstimate = (rewardEstimate *
+            (block.number - lastTransferBlock)) / 360;
+
+        uint256 increasedBalance = currentBalance - principalLocked;
+
+        uint256 availableYield;
+        if (yieldEstimate > increasedBalance) {
+            availableYield = increasedBalance;
+        } else {
+            availableYield = yieldEstimate;
+        }
+
+        return availableYield;
     }
 }
