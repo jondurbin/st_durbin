@@ -14,9 +14,6 @@ contract DeploySaintDurbin is Script {
         uint16 validatorUid = uint16(vm.envUint("VALIDATOR_UID"));
         bytes32 thisSs58PublicKey = vm.envBytes32("CONTRACT_SS58_KEY");
         uint16 netuid = uint16(vm.envUint("NETUID"));
-        bytes16 validatorHotkeyHash = bytes16(
-            vm.envBytes32("VALIDATOR_HOTKEY_HASH")
-        );
 
         // Recipients configuration
         bytes32[] memory recipientColdkeys = new bytes32[](16);
@@ -84,7 +81,6 @@ contract DeploySaintDurbin is Script {
             validatorUid,
             thisSs58PublicKey,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );

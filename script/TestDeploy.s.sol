@@ -16,7 +16,6 @@ contract TestDeploy is Script {
 
         uint16 validatorUid = 0;
         bytes32 thisSs58PublicKey = bytes32(uint256(3));
-        bytes16 validatorHotkeyHash = bytes16(uint128(4));
 
         uint16 netuid = 0;
 
@@ -55,7 +54,6 @@ contract TestDeploy is Script {
             validatorUid,
             thisSs58PublicKey,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );

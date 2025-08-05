@@ -5,15 +5,11 @@ import "forge-std/Test.sol";
 import "../src/SaintDurbin.sol";
 import "./mocks/MockStaking.sol";
 import "./mocks/MockMetagraph.sol";
-import "./mocks/MockStorageQuery.sol";
-import "./mocks/MockBlakeTwo128.sol";
 
 contract SaintDurbinEmergencyTest is Test {
     SaintDurbin public saintDurbin;
     MockStaking public mockStaking;
     MockMetagraph public mockMetagraph;
-    MockStorageQuery public mockStorageQuery;
-    MockBlakeTwo128 public mockBlakeTwo128;
 
     address owner = address(0x1);
     address emergencyOperator = address(0x2);
@@ -25,8 +21,6 @@ contract SaintDurbinEmergencyTest is Test {
     bytes32 contractSs58Key = bytes32(uint256(0x888));
     uint16 netuid = 1;
     uint16 validatorUid = 123;
-
-    bytes16 validatorHotkeyHash = bytes16(uint128(0x555));
 
     bytes32[] recipientColdkeys;
     uint256[] proportions;
@@ -46,13 +40,6 @@ contract SaintDurbinEmergencyTest is Test {
         vm.etch(address(0x802), type(MockMetagraph).runtimeCode);
         mockMetagraph = MockMetagraph(address(0x802));
 
-        // Deploy mock storage query at the expected address
-        vm.etch(address(0x807), type(MockStorageQuery).runtimeCode);
-        mockStorageQuery = MockStorageQuery(payable(address(0x807)));
-
-        vm.etch(address(0x0A), type(MockBlakeTwo128).runtimeCode);
-        mockBlakeTwo128 = MockBlakeTwo128(payable(address(0x0A)));
-
         // Set up the validator in the metagraph
         mockMetagraph.setValidator(
             netuid,
@@ -63,11 +50,6 @@ contract SaintDurbinEmergencyTest is Test {
             uint64(1000e9),
             10000
         );
-
-        mockStorageQuery.setTotalHotkeyAlpha(1000000000e9);
-        mockStorageQuery.setDelegates(10000);
-
-        mockMetagraph.setEmission(netuid, validatorUid, 100e9);
 
         // Setup simple recipient configuration
         recipientColdkeys = new bytes32[](16);
@@ -99,10 +81,12 @@ contract SaintDurbinEmergencyTest is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
+
+        vm.prank(emergencyOperator);
+        saintDurbin.setTotalHotkeyAlpha(INITIAL_STAKE * 10);
     }
 
     function testEmergencyDrainAccess() public {
@@ -182,7 +166,14 @@ contract SaintDurbinEmergencyTest is Test {
 
     function testEmergencyDrainDoesNotAffectRecipients() public {
         // Execute a normal distribution first
+
         uint256 yieldAmount = 1000e9;
+        uint256 totalHotkeyAlpha = saintDurbin.totalHotkeyAlpha();
+        vm.prank(emergencyOperator);
+        saintDurbin.setTotalHotkeyAlpha(totalHotkeyAlpha + yieldAmount);
+
+        mockMetagraph.setEmission(netuid, validatorUid, 100e9);
+
         mockStaking.addYield(
             contractSs58Key,
             validatorHotkey,

@@ -20,15 +20,6 @@ contract SaintDurbin {
     uint256 constant EMERGENCY_TIMELOCK = 86400; // 24 hours timelock for emergency drain
     uint256 constant MIN_UID_COUNT_FOR_SWITCH = 6; // current validator and top 5 validators
 
-    address constant IBlakeTwo128_ADDRESS =
-        address(0x000000000000000000000000000000000000000A);
-    address constant IStorageQuery_ADDRESS =
-        address(0x0000000000000000000000000000000000000807);
-
-    bytes16 constant SUBTENSOR_PREFIX = 0x658faa385070e074c85bf6b568cf0555;
-    bytes16 constant DELEGATES_PREFIX = 0x60d1f0ff648e4c86ea413fc0173d4038; // get validator take
-    bytes16 constant TOTAL_HOTKEY_ALPHA_PREFIX =
-        0xee25c3b5b1886863480497907f1829e6; // get total hotkey alpha
     // ========== State Variables ==========
 
     // Core configuration
@@ -39,6 +30,9 @@ contract SaintDurbin {
     bytes32 public thisSs58PublicKey;
     uint16 public immutable netuid;
     bool public ss58PublicKeySet; // Track if SS58 key has been set
+
+    // Total hotkey alpha
+    uint256 public totalHotkeyAlpha;
 
     // Recipients
     struct Recipient {
@@ -66,9 +60,6 @@ contract SaintDurbin {
     // Enhanced principal tracking
     uint256 public cumulativeBalanceIncrease;
     uint256 public lastBalanceCheckBlock;
-
-    // workaround for blake2_128 precompile not available
-    mapping(bytes32 => bytes16) public hotkeyBlake2Hash;
 
     // ========== Events ==========
     event StakeTransferred(uint256 totalAmount, uint256 newBalance);
@@ -121,8 +112,7 @@ contract SaintDurbin {
     error StakeMoveFailure();
     error NotEmergencyOperatorOrDrainAddress();
     error SS58KeyAlreadySet();
-    error InvalidBlake2Hash();
-    error HotkeyBlake2HashNotSet();
+    error TotalHotkeyAlphaNotSet();
 
     // ========== Modifiers ==========
     modifier onlyEmergencyOperator() {
@@ -153,7 +143,6 @@ contract SaintDurbin {
         uint16 _validatorUid,
         bytes32 _thisSs58PublicKey,
         uint16 _netuid,
-        bytes16 _hotkeyBlake2Hash,
         bytes32[] memory _recipientColdkeys,
         uint256[] memory _proportions
     ) {
@@ -165,9 +154,6 @@ contract SaintDurbin {
         if (_recipientColdkeys.length != _proportions.length)
             revert ProportionsMismatch();
         if (_recipientColdkeys.length != 16) revert ProportionsMismatch();
-        if (_hotkeyBlake2Hash == bytes16(0)) revert InvalidBlake2Hash();
-
-        hotkeyBlake2Hash[_validatorHotkey] = _hotkeyBlake2Hash;
 
         emergencyOperator = _emergencyOperator;
         drainSs58Address = _drainSs58Address;
@@ -229,11 +215,9 @@ contract SaintDurbin {
      * @dev Does NOT automatically check validator status
      */
     function executeTransfer() external nonReentrant {
-        if (hotkeyBlake2Hash[currentValidatorHotkey] == bytes16(0)) {
-            revert HotkeyBlake2HashNotSet();
-        }
-
         if (!canExecuteTransfer()) revert TransferTooSoon();
+
+        if (totalHotkeyAlpha == 0) revert TotalHotkeyAlphaNotSet();
 
         // Alpha of hotkey and coldkey in subnet
         uint256 currentBalance = _getStakedBalanceHotkey(
@@ -248,20 +232,26 @@ contract SaintDurbin {
             return;
         }
 
-        uint256 totalStakedBalance = getTotalHotkeyAlpha(
-            currentValidatorHotkey,
-            netuid
-        );
-
         require(
-            totalStakedBalance >= currentBalance,
+            totalHotkeyAlpha >= currentBalance,
             "Total staked balance is less than current validator hotkey"
         );
 
-        uint256 availableYield = getAvailableYield(
-            currentBalance,
-            totalStakedBalance
-        );
+        uint256 emission = _getEmission(netuid, currentValidatorUid);
+
+        uint256 rewardEstimate = (emission * currentBalance) / totalHotkeyAlpha;
+
+        uint256 yieldEstimate = (rewardEstimate *
+            (block.number - lastTransferBlock)) / 360;
+
+        uint256 increasedBalance = currentBalance - principalLocked;
+
+        uint256 availableYield;
+        if (yieldEstimate > increasedBalance) {
+            availableYield = increasedBalance;
+        } else {
+            availableYield = yieldEstimate;
+        }
 
         if (availableYield < EXISTENTIAL_AMOUNT) {
             lastTransferBlock = block.number;
@@ -584,14 +574,6 @@ contract SaintDurbin {
         _checkAndSwitchValidator();
     }
 
-    function setHotkeyBlake2Hash(
-        bytes32 hotkey,
-        bytes16 hash
-    ) external onlyEmergencyOperator {
-        hotkeyBlake2Hash[hotkey] = hash;
-        emit EmergencyDrainRequested(block.timestamp + EMERGENCY_TIMELOCK);
-    }
-
     /**
      * @notice Request emergency drain with timelock (emergency operator or drain address)
      * @dev Added timelock mechanism for emergency drain
@@ -648,6 +630,16 @@ contract SaintDurbin {
 
         emergencyDrainRequestedAt = 0;
         emit EmergencyDrainCancelled();
+    }
+
+    /**
+     * @notice Set the total hotkey alpha
+     * @dev Can only be called by emergency operator
+     */
+    function setTotalHotkeyAlpha(
+        uint256 _totalHotkeyAlpha
+    ) external onlyEmergencyOperator {
+        totalHotkeyAlpha = _totalHotkeyAlpha;
     }
 
     // ========== View Functions ==========
@@ -710,7 +702,8 @@ contract SaintDurbin {
             abi.encodeWithSelector(IMetagraph.getEmission.selector, netuid, uid)
         );
         require(success, "Precompile call failed: getEmission");
-        return abi.decode(returnData, (uint256));
+        uint64 result = abi.decode(returnData, (uint64));
+        return uint256(result);
     }
 
     /**
@@ -854,105 +847,5 @@ contract SaintDurbin {
         } else {
             timeRemaining = 0;
         }
-    }
-
-    function getHotkeyBlake2Hash(bytes32 hotkey) public returns (bytes16) {
-        return hotkeyBlake2Hash[hotkey];
-        // (bool success, bytes memory returnData) = IBlakeTwo128_ADDRESS.call(
-        //     abi.encode(hotkey)
-        // );
-        // require(success, "Precompile call failed: blake2_128");
-        // return abi.decode(returnData, (bytes16));
-    }
-
-    function getDelegatesStorageKey(
-        bytes32 hotkey
-    ) public returns (bytes memory) {
-        bytes memory result = bytes.concat(
-            SUBTENSOR_PREFIX,
-            DELEGATES_PREFIX,
-            getHotkeyBlake2Hash(hotkey),
-            hotkey
-        );
-        return result;
-    }
-
-    function getTotalHotkeyAlphaStorageKey(
-        bytes32 hotkey,
-        uint16 netuid
-    ) public returns (bytes memory) {
-        (bool success, bytes memory returnData) = IBlakeTwo128_ADDRESS.call(
-            abi.encode(hotkey)
-        );
-
-        require(success, "Precompile call failed: blake2_128");
-
-        bytes2 netuidBytes = bytes2(netuid);
-
-        bytes memory result = bytes.concat(
-            SUBTENSOR_PREFIX,
-            TOTAL_HOTKEY_ALPHA_PREFIX,
-            getHotkeyBlake2Hash(hotkey),
-            hotkey,
-            netuidBytes
-        );
-        return result;
-    }
-
-    function getValidatorTake(bytes32 hotkey) public returns (uint16) {
-        bytes memory storageKey = getDelegatesStorageKey(hotkey);
-        (bool success, bytes memory returnData) = IStorageQuery_ADDRESS.call(
-            storageKey
-        );
-        require(
-            success,
-            "Precompile call failed: Query Delegates via storage query precompile"
-        );
-        return abi.decode(returnData, (uint16));
-    }
-
-    function getTotalHotkeyAlpha(
-        bytes32 hotkey,
-        uint16 netuid
-    ) public returns (uint256) {
-        bytes memory storageKey = getTotalHotkeyAlphaStorageKey(hotkey, netuid);
-
-        (bool success, bytes memory returnData) = IStorageQuery_ADDRESS.call(
-            storageKey
-        );
-        require(
-            success,
-            "Precompile call failed: Query TotalHotkeyAlpha via storage query precompile"
-        );
-        return abi.decode(returnData, (uint256));
-    }
-
-    function getAvailableYield(
-        uint256 currentBalance,
-        uint256 totalStakedBalance
-    ) public returns (uint256) {
-        uint256 emission = _getEmission(netuid, currentValidatorUid);
-
-        uint256 validatorTake = getValidatorTake(currentValidatorHotkey);
-
-        uint256 rewardEstimate = emission - (emission * validatorTake) / 65535;
-
-        uint256 yieldEstimate = (rewardEstimate *
-            (block.number - lastTransferBlock)) / 360;
-
-        uint256 increasedBalance = currentBalance - principalLocked;
-
-        uint256 availableYield;
-        if (yieldEstimate > increasedBalance) {
-            availableYield = increasedBalance;
-        } else {
-            availableYield = yieldEstimate;
-        }
-
-        return availableYield;
-    }
-
-    function getEmission(uint256 netuid, uint256 uid) public returns (uint256) {
-        return _getEmission(netuid, uid);
     }
 }
