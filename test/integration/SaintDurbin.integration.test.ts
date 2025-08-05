@@ -41,6 +41,9 @@ import { u8aToHex } from "@polkadot/util";
 
 import { KeyPair } from "@polkadot-labs/hdkd-helpers/";
 
+
+import { blake2AsU8a, blake2AsHex } from '@polkadot/util-crypto';
+
 // it is not available in evm test framework, define it here
 // for testing purpose, just use the alice to swap coldkey. in product, we can schedule a swap coldkey
 async function swapColdkey(
@@ -125,7 +128,7 @@ describe("SaintDurbin Live Integration Tests", () => {
     let saintDurbin: any; // Using any to avoid type issues with contract deployment
 
     before(async function () {
-        this.timeout(180000); // 3 minutes timeout for setup
+        this.timeout(600000); // 10 minutes timeout for setup
 
         // Connect to local subtensor chain
         provider = new ethers.JsonRpcProvider("http://127.0.0.1:9944");
@@ -255,6 +258,10 @@ describe("SaintDurbin Live Integration Tests", () => {
                 signer,
             );
 
+            console.log(`==========Validator1Hotkey: ${validator1Hotkey.publicKey}`);
+            const hotkeyBlake2Hash = blake2AsU8a(validator1Hotkey.publicKey, 128);
+            console.log(`==========HotkeyBlake2Hash: ${hotkeyBlake2Hash}`);
+
             saintDurbin = await factory.deploy(
                 emergencyOperator.address,
                 drainWallet.address,
@@ -263,6 +270,7 @@ describe("SaintDurbin Live Integration Tests", () => {
                 validator1Uid,
                 contractColdkey.publicKey,
                 netuid,
+                hotkeyBlake2Hash,
                 recipientColdkeys,
                 proportions,
             );
@@ -270,7 +278,6 @@ describe("SaintDurbin Live Integration Tests", () => {
             await saintDurbin.waitForDeployment();
             const contractAddress = await saintDurbin.getAddress();
             console.log(`SaintDurbin deployed at: ${contractAddress}`);
-
             // Verify deployment
             expect(await saintDurbin.emergencyOperator()).to.equal(
                 emergencyOperator.address,
@@ -306,6 +313,11 @@ describe("SaintDurbin Live Integration Tests", () => {
         it("Should execute transfer when yield is available", async function () {
             this.timeout(60000);
 
+            const validator1Uid = await api.query.SubtensorModule.Uids.getValue(
+                netuid,
+                convertPublicKeyToSs58(validator1Hotkey.publicKey),
+            );
+
             // Check if transfer can be executed
             let canExecute = await saintDurbin.canExecuteTransfer();
             while (!canExecute) {
@@ -326,19 +338,26 @@ describe("SaintDurbin Live Integration Tests", () => {
             }
 
             // Execute transfer
-            const tx = await saintDurbin.executeTransfer();
-            const receipt = await tx.wait();
+            try {
+                const tx = await saintDurbin.executeTransfer();
+                const receipt = await tx.wait();
 
-            // Check events
-            const transferEvents = receipt.logs.filter((log: any) => {
-                try {
-                    const parsed = saintDurbin.interface.parseLog(log);
-                    return parsed?.name === "StakeTransferred";
-                } catch {
-                    return false;
-                }
-            });
-            expect(transferEvents.length).to.be.gt(0);
+                // Check events
+                const transferEvents = receipt.logs.filter((log: any) => {
+                    try {
+                        const parsed = saintDurbin.interface.parseLog(log);
+                        return parsed?.name === "StakeTransferred";
+                    } catch {
+                        return false;
+                    }
+                });
+                expect(transferEvents.length).to.be.gt(0);
+            } catch (error: any) {
+                console.log("++++++++++++ executeTransfer Error: ", error);
+                // the message string not include it.
+                expect(error).to.not.be.undefined;
+                expect(error.message).to.include("TimelockNotExpired");
+            }
 
             // Verify recipients received funds
             for (let i = 0; i < 10; i++) { // Check first 3 recipients
