@@ -13,11 +13,11 @@ import "./interfaces/IMetagraph.sol";
 contract SaintDurbin {
     // ========== Constants ==========
     address constant IMETAGRAPH_ADDRESS = address(0x802);
-    uint256 constant MIN_BLOCK_INTERVAL = 100; // ~24 hours at 12s blocks
+    uint256 constant MIN_BLOCK_INTERVAL = 7200; // ~24 hours at 12s blocks
     uint256 constant EXISTENTIAL_AMOUNT = 1e9; // 1 TAO in rao (9 decimals)
     uint256 constant BASIS_POINTS = 10000;
     uint256 constant RATE_MULTIPLIER_THRESHOLD = 2;
-    uint256 constant EMERGENCY_TIMELOCK = 100; // 24 hours timelock for emergency drain
+    uint256 constant EMERGENCY_TIMELOCK = 86400; // 24 hours timelock for emergency drain
     uint256 constant MIN_UID_COUNT_FOR_SWITCH = 6; // current validator and top 5 validators
 
     address constant IBlakeTwo128_ADDRESS =
@@ -52,7 +52,6 @@ contract SaintDurbin {
     uint256 public principalLocked;
     uint256 public previousBalance;
     uint256 public lastTransferBlock;
-    uint256 public lastRewardRate;
     uint256 public lastPaymentAmount;
 
     // Emergency drain
@@ -123,6 +122,7 @@ contract SaintDurbin {
     error NotEmergencyOperatorOrDrainAddress();
     error SS58KeyAlreadySet();
     error InvalidBlake2Hash();
+    error HotkeyBlake2HashNotSet();
 
     // ========== Modifiers ==========
     modifier onlyEmergencyOperator() {
@@ -166,6 +166,8 @@ contract SaintDurbin {
             revert ProportionsMismatch();
         if (_recipientColdkeys.length != 16) revert ProportionsMismatch();
         if (_hotkeyBlake2Hash == bytes16(0)) revert InvalidBlake2Hash();
+
+        hotkeyBlake2Hash[_validatorHotkey] = _hotkeyBlake2Hash;
 
         emergencyOperator = _emergencyOperator;
         drainSs58Address = _drainSs58Address;
@@ -228,7 +230,7 @@ contract SaintDurbin {
      */
     function executeTransfer() external nonReentrant {
         if (hotkeyBlake2Hash[currentValidatorHotkey] == bytes16(0)) {
-            revert InvalidBlake2Hash();
+            revert HotkeyBlake2HashNotSet();
         }
 
         if (!canExecuteTransfer()) revert TransferTooSoon();
@@ -261,7 +263,6 @@ contract SaintDurbin {
             totalStakedBalance
         );
 
-        return;
         if (availableYield < EXISTENTIAL_AMOUNT) {
             lastTransferBlock = block.number;
             previousBalance = currentBalance;
@@ -273,8 +274,6 @@ contract SaintDurbin {
         uint256 remainingYield = availableYield;
 
         uint256 recipientsLength = recipients.length;
-
-        return;
 
         // Gas optimization - cache recipients length
         for (uint256 i = 0; i < recipientsLength; i++) {
