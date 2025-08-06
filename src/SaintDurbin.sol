@@ -500,10 +500,6 @@ contract SaintDurbin {
             uint256 yieldScore = (uint256(emission) * uint256(dividends)) /
                 uint256(stake);
 
-            // For integration tests, we can use the emission as the yield score directly.
-            // otherwise, yieldScore will be 0
-            // uint256 yieldScore = uint256(emission);
-
             if (yieldScore > bestYieldScore) {
                 bestYieldScore = yieldScore;
                 bestUid = uid;
