@@ -13,7 +13,6 @@ contract SaintDurbinConstructorTests is Test {
     bytes32 drainSs58Address = bytes32(uint256(0x999));
     bytes32 validatorHotkey = bytes32(uint256(0x777));
     bytes32 contractSs58Key = bytes32(uint256(0x888));
-    bytes16 validatorHotkeyHash = bytes16(uint128(0x555));
     uint16 netuid = 1;
     uint16 validatorUid = 123;
 
@@ -45,7 +44,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
@@ -61,7 +59,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
@@ -77,7 +74,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid, // invalid validator hotkey
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
@@ -93,7 +89,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             bytes32(0), // invalid SS58 key
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
@@ -111,7 +106,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             wrongColdkeys,
             proportions
         );
@@ -135,7 +129,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             wrongRecipients,
             wrongProportions
         );
@@ -160,7 +153,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             badRecipients,
             validProportions
         );
@@ -182,7 +174,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             invalidProportions
         );
@@ -203,7 +194,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             wrongProportions
         );
@@ -221,7 +211,6 @@ contract SaintDurbinConstructorTests is Test {
             validatorUid,
             contractSs58Key,
             netuid,
-            validatorHotkeyHash,
             recipientColdkeys,
             proportions
         );
