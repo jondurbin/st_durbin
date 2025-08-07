@@ -160,6 +160,7 @@ contract SaintDurbinPrincipalTest is Test {
             netuid,
             normalYield
         );
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
@@ -176,9 +177,7 @@ contract SaintDurbinPrincipalTest is Test {
         uint256 principalBefore1 = saintDurbin.principalLocked();
         saintDurbin.executeTransfer();
         uint256 principalAfter1 = saintDurbin.principalLocked();
-
-        // TODO: confirm we can skip the check
-        // assertEq(principalAfter1, principalBefore1 + firstAddition);
+        assertEq(principalAfter1, principalBefore1);
 
         // Normal distribution
         mockStaking.addYield(
@@ -204,15 +203,10 @@ contract SaintDurbinPrincipalTest is Test {
         saintDurbin.executeTransfer();
         uint256 principalAfter2 = saintDurbin.principalLocked();
 
-        // TODO: confirm we can skip the check
-        // assertEq(principalAfter2, principalBefore2 + secondAddition);
+        assertEq(principalAfter2, principalBefore2);
 
         // Verify total principal
-        // TODO: confirm we can skip the check
-        // assertEq(
-        //     saintDurbin.principalLocked(),
-        //     INITIAL_STAKE + firstAddition + secondAddition
-        // );
+        assertEq(saintDurbin.principalLocked(), INITIAL_STAKE);
     }
 
     function testRateAnalysisThreshold() public {
@@ -225,6 +219,7 @@ contract SaintDurbinPrincipalTest is Test {
             normalYield
         );
         vm.roll(block.number + 7200);
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         saintDurbin.executeTransfer();
 
         // Add yield just below 2x threshold (should NOT trigger principal detection)
@@ -241,10 +236,10 @@ contract SaintDurbinPrincipalTest is Test {
         saintDurbin.executeTransfer();
 
         // // Principal should not change
-        // assertEq(saintDurbin.principalLocked(), principalBefore);
+        assertEq(saintDurbin.principalLocked(), principalBefore);
 
         // Full amount should be distributed
-        // assertEq(saintDurbin.lastPaymentAmount(), increasedYield);
+        assertEq(saintDurbin.lastPaymentAmount(), increasedYield);
 
         // Add yield just above 2x threshold (should trigger principal detection)
         uint256 spikedYield = 810e9; // > 2x of 390
@@ -259,9 +254,9 @@ contract SaintDurbinPrincipalTest is Test {
         saintDurbin.executeTransfer();
 
         // // Principal should increase
-        // assertGe(saintDurbin.principalLocked(), principalBefore);
+        assertGe(saintDurbin.principalLocked(), principalBefore);
         // Only previous amount should be distributed
-        // assertEq(saintDurbin.lastPaymentAmount(), spikedYield);
+        assertEq(saintDurbin.lastPaymentAmount(), spikedYield);
     }
 
     function testPrincipalNeverDistributed() public {
@@ -325,6 +320,7 @@ contract SaintDurbinPrincipalTest is Test {
             normalYield
         );
         vm.roll(block.number + 7200);
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         saintDurbin.executeTransfer();
 
         // Second distribution after longer period (should adjust rate accordingly)
@@ -343,7 +339,7 @@ contract SaintDurbinPrincipalTest is Test {
 
         // Should NOT detect as principal (rate is same)
         assertEq(saintDurbin.principalLocked(), principalBefore);
-        // assertEq(saintDurbin.lastPaymentAmount(), doubleYield);
+        assertEq(saintDurbin.lastPaymentAmount(), doubleYield);
 
         // // Third distribution with principal after short period
         uint256 shortPeriodBlocks = 7200;
@@ -359,6 +355,6 @@ contract SaintDurbinPrincipalTest is Test {
         saintDurbin.executeTransfer();
 
         // // Should detect principal
-        // assertEq(saintDurbin.principalLocked(), principalBefore);
+        assertEq(saintDurbin.principalLocked(), principalBefore);
     }
 }

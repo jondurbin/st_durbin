@@ -175,6 +175,7 @@ contract SaintDurbinTest is Test {
 
         // Advance blocks
         vm.roll(block.number + 7200);
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
 
         // Execute transfer
         saintDurbin.executeTransfer();
@@ -184,14 +185,14 @@ contract SaintDurbinTest is Test {
         assertEq(transferCount, 16); // All recipients should receive
 
         // Verify Sam's transfer (1% of 1000 TAO = 10 TAO)
-        // MockStaking.Transfer memory samTransfer = mockStaking.getTransfer(0);
-        // assertEq(samTransfer.from, contractSs58Key);
-        // assertEq(samTransfer.to, recipientColdkeys[0]);
-        // assertEq(samTransfer.amount, (yieldAmount * 100) / 10000); // 10 TAO
+        MockStaking.Transfer memory samTransfer = mockStaking.getTransfer(0);
+        assertEq(samTransfer.from, contractSs58Key);
+        assertEq(samTransfer.to, recipientColdkeys[0]);
+        assertEq(samTransfer.amount, (yieldAmount * 100) / 10000); // 10 TAO
 
         // Verify Paper's transfer (5% of 1000 TAO = 50 TAO)
-        // MockStaking.Transfer memory paperTransfer = mockStaking.getTransfer(2);
-        // assertEq(paperTransfer.amount, (yieldAmount * 500) / 10000); // 50 TAO
+        MockStaking.Transfer memory paperTransfer = mockStaking.getTransfer(2);
+        assertEq(paperTransfer.amount, (yieldAmount * 500) / 10000); // 50 TAO
     }
 
     function testFallbackToLastPaymentAmount() public {
