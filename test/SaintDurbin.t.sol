@@ -203,7 +203,7 @@ contract SaintDurbinTest is Test {
             netuid,
             firstYield
         );
-
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         // Advance blocks and execute first transfer
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
@@ -221,6 +221,7 @@ contract SaintDurbinTest is Test {
 
         // Now advance blocks again but don't add any new yield
         vm.roll(block.number + 7200);
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
 
         // Execute transfer again - should use last payment amount as fallback
         saintDurbin.executeTransfer();
@@ -238,9 +239,10 @@ contract SaintDurbinTest is Test {
             16
         );
         assertEq(secondSamTransfer.amount, firstSamTransfer.amount);
+
         assertEq(secondSamTransfer.amount, (firstYield * 100) / 10000); // Still 1% of original yield
 
-        // // Check Paper's second transfer matches first
+        // // // Check Paper's second transfer matches first
         MockStaking.Transfer memory firstPaperTransfer = mockStaking
             .getTransfer(2);
         MockStaking.Transfer memory secondPaperTransfer = mockStaking
@@ -407,6 +409,7 @@ contract SaintDurbinTest is Test {
 
         // Add yield
         mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, 1000e9);
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
 
         // Advance blocks
         vm.roll(block.number + 7200);
