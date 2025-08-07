@@ -234,6 +234,7 @@ contract SaintDurbinEmergencyTest is Test {
             netuid,
             normalYield
         );
+        mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         vm.roll(block.number + 7200);
         saintDurbin.executeTransfer();
 
@@ -245,15 +246,11 @@ contract SaintDurbinEmergencyTest is Test {
             netuid,
             principalAddition + normalYield
         );
-        vm.roll(14401); // Advance to block 14401 (7201 + 7200)
+        vm.roll(block.number + 14400); // Advance to block 14401 (7201 + 7200)
         saintDurbin.executeTransfer();
 
         // Verify principal was detected
-        // TODO: confirm we can skip the check
-        // assertEq(
-        //     saintDurbin.principalLocked(),
-        //     INITIAL_STAKE + principalAddition
-        // );
+        assertEq(saintDurbin.principalLocked(), INITIAL_STAKE);
 
         // Emergency drain should still transfer everything
         uint256 currentBalance = saintDurbin.getStakedBalance();
