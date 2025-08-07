@@ -12,6 +12,7 @@ import "./interfaces/IMetagraph.sol";
  */
 contract SaintDurbin {
     // ========== Constants ==========
+    address constant ISTAKING_ADDRESS = address(0x805);
     address constant IMETAGRAPH_ADDRESS = address(0x802);
     uint256 constant MIN_BLOCK_INTERVAL = 7200; // ~24 hours at 12s blocks
     uint256 constant EXISTENTIAL_AMOUNT = 1e9; // 1 TAO in rao (9 decimals)
@@ -94,8 +95,6 @@ contract SaintDurbin {
         uint256 amount,
         uint256 newPrincipal
     );
-
-    event HotkeyBlake2HashSet(bytes32 indexed hotkey, bytes16 indexed hash);
 
     // ========== Custom Errors ==========
     error NotEmergencyOperator();
@@ -635,6 +634,10 @@ contract SaintDurbin {
     function setTotalHotkeyAlpha(
         uint256 _totalHotkeyAlpha
     ) external onlyEmergencyOperator {
+        require(
+            _totalHotkeyAlpha > 0,
+            "Total hotkey alpha must be greater than 0"
+        );
         totalHotkeyAlpha = _totalHotkeyAlpha;
     }
 
