@@ -30,8 +30,13 @@ contract MockMetagraph is IMetagraph {
         uint64 stake,
         uint16 dividend
     ) external {
-        validators[netuid][uid] =
-            Validator({isValidator: isValidator, isActive: isActive, hotkey: hotkey, stake: stake, dividend: dividend});
+        validators[netuid][uid] = Validator({
+            isValidator: isValidator,
+            isActive: isActive,
+            hotkey: hotkey,
+            stake: stake,
+            dividend: dividend
+        });
 
         // Update uid count if needed
         if (uid >= uidCounts[netuid]) {
@@ -44,68 +49,124 @@ contract MockMetagraph is IMetagraph {
     }
 
     // IMetagraph implementation
-    function getValidatorStatus(uint16 netuid, uint16 uid) external view override returns (bool) {
+    function getValidatorStatus(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (bool) {
         return validators[netuid][uid].isValidator;
     }
 
-    function getIsActive(uint16 netuid, uint16 uid) external view override returns (bool) {
+    function getIsActive(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (bool) {
         return validators[netuid][uid].isActive;
     }
 
-    function getHotkey(uint16 netuid, uint16 uid) external view override returns (bytes32) {
+    function getHotkey(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (bytes32) {
         return validators[netuid][uid].hotkey;
     }
 
-    function getStake(uint16 netuid, uint16 uid) external view override returns (uint64) {
+    function getStake(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint64) {
         return validators[netuid][uid].stake;
     }
 
-    function getDividends(uint16 netuid, uint16 uid) external view override returns (uint16) {
+    function getDividends(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint16) {
         return validators[netuid][uid].dividend;
     }
 
-    function getUidCount(uint16 netuid) external view override returns (uint16) {
+    function getUidCount(
+        uint16 netuid
+    ) external view override returns (uint16) {
         return uidCounts[netuid];
     }
 
     // Additional IMetagraph methods - return default values for testing
-    function getAxon(uint16 netuid, uint16 uid) external view override returns (AxonInfo memory) {
-        return AxonInfo({block: 0, version: 0, ip: 0, port: 0, ip_type: 0, protocol: 0});
+    function getAxon(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (AxonInfo memory) {
+        return
+            AxonInfo({
+                block: 0,
+                version: 0,
+                ip: 0,
+                port: 0,
+                ip_type: 0,
+                protocol: 0
+            });
     }
 
-    function getColdkey(uint16 netuid, uint16 uid) external view override returns (bytes32) {
+    function getColdkey(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (bytes32) {
         return bytes32(0);
     }
 
-    function getConsensus(uint16 netuid, uint16 uid) external view override returns (uint16) {
+    function getConsensus(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint16) {
         return 0;
     }
 
-    function getIncentive(uint16 netuid, uint16 uid) external view override returns (uint16) {
+    function getIncentive(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint16) {
         return 0;
     }
 
-    function getLastUpdate(uint16 netuid, uint16 uid) external view override returns (uint64) {
+    function getLastUpdate(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint64) {
         return 0;
     }
 
-    function getRank(uint16 netuid, uint16 uid) external view override returns (uint16) {
+    function getRank(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint16) {
         return 0;
     }
 
-    function getTrust(uint16 netuid, uint16 uid) external view override returns (uint16) {
+    function getTrust(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint16) {
         return 0;
     }
 
-    function getVtrust(uint16 netuid, uint16 uid) external view override returns (uint16) {
+    function getVtrust(
+        uint16 netuid,
+        uint16 uid
+    ) external view override returns (uint16) {
         return 0;
     }
 
-    function setEmission(uint16 _netuid, uint16 _uid, uint64 _emission) external {
+    function setEmission(
+        uint16 _netuid,
+        uint16 _uid,
+        uint64 _emission
+    ) external {
         emissions[_netuid][_uid] = _emission;
     }
 
-    function getEmission(uint16 _netuid, uint16 _uid) external view returns (uint64) {
+    function getEmission(
+        uint16 _netuid,
+        uint16 _uid
+    ) external view returns (uint64) {
         return emissions[_netuid][_uid];
     }
 }

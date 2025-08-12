@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.20;
 
-import "./interfaces/IStakingV2.sol";
-import "./interfaces/IMetagraph.sol";
+import {IStaking, ISTAKING_ADDRESS} from "./interfaces/IStakingV2.sol";
+import {IMetagraph, IMETAGRAPH_ADDRESS} from "./interfaces/IMetagraph.sol";
 
 /**
  * @title SaintDurbin
@@ -12,12 +12,9 @@ import "./interfaces/IMetagraph.sol";
  */
 contract SaintDurbin {
     // ========== Constants ==========
-    address constant ISTAKING_ADDRESS = address(0x805);
-    address constant IMETAGRAPH_ADDRESS = address(0x802);
     uint256 constant MIN_BLOCK_INTERVAL = 7200; // ~24 hours at 12s blocks
     uint256 constant EXISTENTIAL_AMOUNT = 1e9; // 1 TAO in rao (9 decimals)
     uint256 constant BASIS_POINTS = 10000;
-    uint256 constant RATE_MULTIPLIER_THRESHOLD = 2;
     uint256 constant EMERGENCY_TIMELOCK = 86400; // 24 hours timelock for emergency drain
     uint256 constant MIN_UID_COUNT_FOR_SWITCH = 6; // current validator and top 5 validators
 
@@ -223,9 +220,9 @@ contract SaintDurbin {
             currentValidatorHotkey
         );
 
-        // If balance hasn't changed, use last payment amount as fallback
+        // If current balance is less than principal locked, means the hotkey didn't get any yield
+        // Or stake is moved to other account
         if (currentBalance <= principalLocked) {
-            // No yield and no previous payment to fall back to
             lastTransferBlock = block.number;
             previousBalance = currentBalance;
             return;
@@ -525,42 +522,34 @@ contract SaintDurbin {
         // Move stake to new validator
         uint256 currentStake = balanceBefore;
         if (currentStake > 0) {
-            // Update state variables BEFORE external call to prevent reentrancy
-            bytes32 previousHotkey = currentValidatorHotkey;
-            uint16 previousUid = currentValidatorUid;
-            currentValidatorHotkey = bestHotkey;
-            currentValidatorUid = bestUid;
-
             (success, ) = address(staking).call(
                 abi.encodeWithSelector(
                     IStaking.moveStake.selector,
-                    previousHotkey,
+                    currentValidatorHotkey,
                     bestHotkey,
                     netuid,
                     netuid,
                     currentStake
                 )
             );
-            if (success) {
-                // Get balance after move to ensure principal tracking is correct
-                uint256 balanceAfter = _getStakedBalanceHotkey(bestHotkey);
-                previousBalance = balanceAfter; // Update tracking
-
-                emit ValidatorSwitched(oldHotkey, bestHotkey, bestUid, reason);
-            } else {
-                // Revert state changes on failure
-                currentValidatorHotkey = previousHotkey;
-                currentValidatorUid = previousUid;
+            if (!success) {
                 emit ValidatorCheckFailed(
                     "Failed to move stake to new validator"
                 );
+                return;
             }
         }
+
+        uint256 balanceAfter = _getStakedBalanceHotkey(bestHotkey);
+        previousBalance = balanceAfter;
+        currentValidatorHotkey = bestHotkey;
+        currentValidatorUid = bestUid;
+        emit ValidatorSwitched(oldHotkey, bestHotkey, bestUid, reason);
     }
 
     /**
      * @notice Manually trigger validator check and switch
-     * @dev Can only be called by emergency operator
+     * @dev Can only be called by emergency operator or drain address
      */
     function checkAndSwitchValidator()
         external

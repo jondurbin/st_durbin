@@ -8,7 +8,8 @@ import "../../src/interfaces/IStakingV2.sol";
  * @notice Mock implementation of the Bittensor staking precompile for testing
  */
 contract MockStaking is IStaking {
-    mapping(bytes32 => mapping(bytes32 => mapping(uint16 => uint256))) public stakes;
+    mapping(bytes32 => mapping(bytes32 => mapping(uint16 => uint256)))
+        public stakes;
     mapping(bytes32 => mapping(uint16 => uint256)) public totalStakes;
     mapping(bytes32 => mapping(uint16 => bool)) public validators;
 
@@ -28,19 +29,35 @@ contract MockStaking is IStaking {
     string public revertMessage = "Mock revert";
     bool public shouldRevertWithoutReason;
 
-    function setStake(bytes32 coldkey, bytes32 hotkey, uint16 netuid, uint256 amount) external {
+    function setStake(
+        bytes32 coldkey,
+        bytes32 hotkey,
+        uint16 netuid,
+        uint256 amount
+    ) external {
         stakes[coldkey][hotkey][netuid] = amount;
     }
 
-    function setTotalStake(bytes32 hotkey, uint16 netuid, uint256 amount) external {
+    function setTotalStake(
+        bytes32 hotkey,
+        uint16 netuid,
+        uint256 amount
+    ) external {
         totalStakes[hotkey][netuid] = amount;
     }
 
-    function setValidator(bytes32 hotkey, uint16 netuid, bool _isValidator) external {
+    function setValidator(
+        bytes32 hotkey,
+        uint16 netuid,
+        bool _isValidator
+    ) external {
         validators[hotkey][netuid] = _isValidator;
     }
 
-    function setShouldRevert(bool _shouldRevert, string memory _message) external {
+    function setShouldRevert(
+        bool _shouldRevert,
+        string memory _message
+    ) external {
         shouldRevert = _shouldRevert;
         revertMessage = _message;
     }
@@ -49,7 +66,10 @@ contract MockStaking is IStaking {
         shouldRevertWithoutReason = _shouldRevert;
     }
 
-    function getTotalStake(bytes32 hotkey, uint16 netuid) external view returns (uint256) {
+    function getTotalStake(
+        bytes32 hotkey,
+        uint16 netuid
+    ) external view returns (uint256) {
         return totalStakes[hotkey][netuid];
     }
 
@@ -103,7 +123,10 @@ contract MockStaking is IStaking {
         );
     }
 
-    function isValidator(bytes32 hotkey, uint16 netuid) external view returns (bool) {
+    function isValidator(
+        bytes32 hotkey,
+        uint16 netuid
+    ) external view returns (bool) {
         return validators[hotkey][netuid];
     }
 
@@ -112,7 +135,9 @@ contract MockStaking is IStaking {
         return transfers.length;
     }
 
-    function getTransfer(uint256 index) external view returns (Transfer memory) {
+    function getTransfer(
+        uint256 index
+    ) external view returns (Transfer memory) {
         require(index < transfers.length, "Invalid index");
         return transfers[index];
     }
@@ -122,7 +147,12 @@ contract MockStaking is IStaking {
     }
 
     // Simulate adding yield
-    function addYield(bytes32 coldkey, bytes32 hotkey, uint16 netuid, uint256 amount) external {
+    function addYield(
+        bytes32 coldkey,
+        bytes32 hotkey,
+        uint16 netuid,
+        uint256 amount
+    ) external {
         stakes[coldkey][hotkey][netuid] += amount;
     }
 
@@ -149,7 +179,11 @@ contract MockStaking is IStaking {
         );
     }
 
-    function addStake(bytes32 hotkey, uint256 amount, uint256 netuid) external payable override {
+    function addStake(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 netuid
+    ) external payable override {
         if (shouldRevert) {
             revert(revertMessage);
         }
@@ -159,29 +193,44 @@ contract MockStaking is IStaking {
         totalStakes[hotkey][uint16(netuid)] += amount;
     }
 
-    function removeStake(bytes32 hotkey, uint256 amount, uint256 netuid) external override {
+    function removeStake(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 netuid
+    ) external override {
         if (shouldRevert) {
             revert(revertMessage);
         }
 
         bytes32 coldkey = bytes32(uint256(uint160(msg.sender)));
-        require(stakes[coldkey][hotkey][uint16(netuid)] >= amount, "Insufficient stake");
+        require(
+            stakes[coldkey][hotkey][uint16(netuid)] >= amount,
+            "Insufficient stake"
+        );
 
         stakes[coldkey][hotkey][uint16(netuid)] -= amount;
         totalStakes[hotkey][uint16(netuid)] -= amount;
     }
 
-    function getTotalColdkeyStake(bytes32 coldkey) external view override returns (uint256) {
+    function getTotalColdkeyStake(
+        bytes32 coldkey
+    ) external view override returns (uint256) {
         // Mock implementation - return 0
         return 0;
     }
 
-    function getTotalHotkeyStake(bytes32 hotkey) external view override returns (uint256) {
+    function getTotalHotkeyStake(
+        bytes32 hotkey
+    ) external view override returns (uint256) {
         // Mock implementation - return 0
         return 0;
     }
 
-    function getStake(bytes32 hotkey, bytes32 coldkey, uint256 netuid) external view override returns (uint256) {
+    function getStake(
+        bytes32 hotkey,
+        bytes32 coldkey,
+        uint256 netuid
+    ) external view override returns (uint256) {
         return stakes[coldkey][hotkey][uint16(netuid)];
     }
 
@@ -193,34 +242,40 @@ contract MockStaking is IStaking {
         // Mock implementation - no-op
     }
 
-    function getAlphaStakedValidators(bytes32 hotkey, uint256 netuid)
-        external
-        view
-        override
-        returns (uint256[] memory)
-    {
+    function getAlphaStakedValidators(
+        bytes32 hotkey,
+        uint256 netuid
+    ) external view override returns (uint256[] memory) {
         // Mock implementation - return empty array
         return new uint256[](0);
     }
 
-    function getTotalAlphaStaked(bytes32 hotkey, uint256 netuid) external view override returns (uint256) {
+    function getTotalAlphaStaked(
+        bytes32 hotkey,
+        uint256 netuid
+    ) external view override returns (uint256) {
         // Mock implementation - return 0
         return 0;
     }
 
-    function addStakeLimit(bytes32 hotkey, uint256 amount, uint256 limit_price, bool allow_partial, uint256 netuid)
-        external
-        payable
-        override
-    {
+    function addStakeLimit(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 limit_price,
+        bool allow_partial,
+        uint256 netuid
+    ) external payable override {
         // Mock implementation - just call addStake
         this.addStake(hotkey, amount, netuid);
     }
 
-    function removeStakeLimit(bytes32 hotkey, uint256 amount, uint256 limit_price, bool allow_partial, uint256 netuid)
-        external
-        override
-    {
+    function removeStakeLimit(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 limit_price,
+        bool allow_partial,
+        uint256 netuid
+    ) external override {
         // Mock implementation - just call removeStake
         this.removeStake(hotkey, amount, netuid);
     }

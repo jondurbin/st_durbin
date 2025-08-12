@@ -20,7 +20,11 @@ interface IStaking {
      * - `hotkey` must be a valid hotkey registered on the network, ensuring that the stake is
      *   correctly attributed.
      */
-    function addStake(bytes32 hotkey, uint256 amount, uint256 netuid) external payable;
+    function addStake(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 netuid
+    ) external payable;
 
     /**
      * @dev Removes a subtensor stake `amount` from the specified `hotkey`.
@@ -40,7 +44,11 @@ interface IStaking {
      *   correctly attributed.
      * - The existing stake amount must be not lower than specified amount
      */
-    function removeStake(bytes32 hotkey, uint256 amount, uint256 netuid) external;
+    function removeStake(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 netuid
+    ) external;
 
     /**
      * @dev Moves a subtensor stake `amount` associated with the `hotkey` to a different hotkey
@@ -108,7 +116,9 @@ interface IStaking {
      * @param coldkey The coldkey public key (32 bytes).
      * @return The amount of RAO staked by the coldkey.
      */
-    function getTotalColdkeyStake(bytes32 coldkey) external view returns (uint256);
+    function getTotalColdkeyStake(
+        bytes32 coldkey
+    ) external view returns (uint256);
 
     /**
      * @dev Returns the total amount of stake under a hotkey (delegative or otherwise)
@@ -120,7 +130,9 @@ interface IStaking {
      * @param hotkey The hotkey public key (32 bytes).
      * @return The total amount of RAO staked under the hotkey.
      */
-    function getTotalHotkeyStake(bytes32 hotkey) external view returns (uint256);
+    function getTotalHotkeyStake(
+        bytes32 hotkey
+    ) external view returns (uint256);
 
     /**
      * @dev Returns the stake amount associated with the specified `hotkey` and `coldkey`.
@@ -133,7 +145,11 @@ interface IStaking {
      * @param netuid The subnet the stake is on (uint256).
      * @return The current stake amount in uint256 format.
      */
-    function getStake(bytes32 hotkey, bytes32 coldkey, uint256 netuid) external view returns (uint256);
+    function getStake(
+        bytes32 hotkey,
+        bytes32 coldkey,
+        uint256 netuid
+    ) external view returns (uint256);
 
     /**
      * @dev Delegates staking to a proxy account.
@@ -159,7 +175,10 @@ interface IStaking {
      * @param netuid The subnet the stake is on (uint256).
      * @return An array of validators that have staked alpha under the hotkey.
      */
-    function getAlphaStakedValidators(bytes32 hotkey, uint256 netuid) external view returns (uint256[] memory);
+    function getAlphaStakedValidators(
+        bytes32 hotkey,
+        uint256 netuid
+    ) external view returns (uint256[] memory);
 
     /**
      * @dev Returns the total amount of alpha staked under a hotkey.
@@ -171,7 +190,10 @@ interface IStaking {
      * @param netuid The subnet the stake is on (uint256).
      * @return The total amount of alpha staked under the hotkey.
      */
-    function getTotalAlphaStaked(bytes32 hotkey, uint256 netuid) external view returns (uint256);
+    function getTotalAlphaStaked(
+        bytes32 hotkey,
+        uint256 netuid
+    ) external view returns (uint256);
 
     /**
      * @dev Adds a subtensor stake `amount` associated with the `hotkey` within a price limit.
@@ -192,9 +214,13 @@ interface IStaking {
      * - `hotkey` must be a valid hotkey registered on the network, ensuring that the stake is
      *   correctly attributed.
      */
-    function addStakeLimit(bytes32 hotkey, uint256 amount, uint256 limit_price, bool allow_partial, uint256 netuid)
-        external
-        payable;
+    function addStakeLimit(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 limit_price,
+        bool allow_partial,
+        uint256 netuid
+    ) external payable;
 
     /**
      * @dev Removes a subtensor stake `amount` from the specified `hotkey` within a price limit.
@@ -216,6 +242,11 @@ interface IStaking {
      *   correctly attributed.
      * - The existing stake amount must be not lower than specified amount
      */
-    function removeStakeLimit(bytes32 hotkey, uint256 amount, uint256 limit_price, bool allow_partial, uint256 netuid)
-        external;
+    function removeStakeLimit(
+        bytes32 hotkey,
+        uint256 amount,
+        uint256 limit_price,
+        bool allow_partial,
+        uint256 netuid
+    ) external;
 }
