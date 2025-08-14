@@ -657,28 +657,6 @@ contract SaintDurbin {
         require(success, "Precompile call failed: getStake");
         return abi.decode(returnData, (uint256));
     }
-
-    /**
-     * @notice Internal helper to get totalstaked balance
-     */
-    function _getTotalStakedBalanceHotkey(
-        bytes32 hotkey
-    ) internal view returns (uint256) {
-        (bool success, bytes memory returnData) = address(staking).staticcall(
-            abi.encodeWithSelector(
-                IStaking.getTotalHotkeyStake.selector,
-                hotkey,
-                netuid
-            )
-        );
-        require(success, "Precompile call failed: getTotalHotkeyStake");
-        return abi.decode(returnData, (uint256));
-    }
-
-    function getTotalStakedBalance() public view returns (uint256) {
-        return _getTotalStakedBalanceHotkey(currentValidatorHotkey);
-    }
-
     /**
      * @notice Internal helper to get emission
      */
