@@ -84,9 +84,6 @@ contract SaintDurbinEmergencyTest is Test {
             recipientColdkeys,
             proportions
         );
-
-        vm.prank(emergencyOperator);
-        saintDurbin.setTotalHotkeyAlpha(INITIAL_STAKE * 10);
     }
 
     function testEmergencyDrainAccess() public {
@@ -168,9 +165,7 @@ contract SaintDurbinEmergencyTest is Test {
         // Execute a normal distribution first
 
         uint256 yieldAmount = 1000e9;
-        uint256 totalHotkeyAlpha = saintDurbin.totalHotkeyAlpha();
         vm.prank(emergencyOperator);
-        saintDurbin.setTotalHotkeyAlpha(totalHotkeyAlpha + yieldAmount);
 
         mockMetagraph.setEmission(netuid, validatorUid, 100e9);
 
@@ -181,7 +176,8 @@ contract SaintDurbinEmergencyTest is Test {
             yieldAmount
         );
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         uint256 transfersBeforeDrain = mockStaking.getTransferCount();
         assertEq(transfersBeforeDrain, 16); // All recipients received
@@ -236,7 +232,8 @@ contract SaintDurbinEmergencyTest is Test {
         );
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Add principal
         uint256 principalAddition = 5000e9;
@@ -247,7 +244,8 @@ contract SaintDurbinEmergencyTest is Test {
             principalAddition + normalYield
         );
         vm.roll(block.number + 14400); // Advance to block 14401 (7201 + 7200)
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Verify principal was detected
         assertEq(saintDurbin.principalLocked(), INITIAL_STAKE);

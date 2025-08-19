@@ -83,9 +83,6 @@ contract SaintDurbinPrincipalTest is Test {
             recipientColdkeys,
             proportions
         );
-
-        vm.prank(emergencyOperator);
-        saintDurbin.setTotalHotkeyAlpha(INITIAL_STAKE * 10);
     }
 
     function testPrincipalDetectionOnFirstTransfer() public {
@@ -101,7 +98,8 @@ contract SaintDurbinPrincipalTest is Test {
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
 
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Verify first transfer completed
         assertEq(saintDurbin.lastPaymentAmount(), firstYield);
@@ -121,7 +119,8 @@ contract SaintDurbinPrincipalTest is Test {
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
 
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Second distribution with principal addition
         // User adds 1000 TAO principal + normal 100 TAO yield
@@ -141,7 +140,8 @@ contract SaintDurbinPrincipalTest is Test {
         mockMetagraph.setEmission(netuid, validatorUid, 1e9);
 
         // Execute transfer - should detect principal
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Verify principal was detected and added
         uint256 principalAfter = saintDurbin.principalLocked();
@@ -162,7 +162,8 @@ contract SaintDurbinPrincipalTest is Test {
         );
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // First principal addition
         uint256 firstAddition = 500e9;
@@ -175,7 +176,8 @@ contract SaintDurbinPrincipalTest is Test {
         vm.roll(block.number + 7200);
 
         uint256 principalBefore1 = saintDurbin.principalLocked();
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
         uint256 principalAfter1 = saintDurbin.principalLocked();
         assertEq(principalAfter1, principalBefore1);
 
@@ -187,7 +189,8 @@ contract SaintDurbinPrincipalTest is Test {
             normalYield
         );
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Second principal addition
         uint256 secondAddition = 2000e9;
@@ -200,7 +203,8 @@ contract SaintDurbinPrincipalTest is Test {
         vm.roll(block.number + 7200);
 
         uint256 principalBefore2 = saintDurbin.principalLocked();
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
         uint256 principalAfter2 = saintDurbin.principalLocked();
 
         assertEq(principalAfter2, principalBefore2);
@@ -220,7 +224,8 @@ contract SaintDurbinPrincipalTest is Test {
         );
         vm.roll(block.number + 7200);
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Add yield just below 2x threshold (should NOT trigger principal detection)
         uint256 increasedYield = 390e9; // 1.95x
@@ -233,7 +238,8 @@ contract SaintDurbinPrincipalTest is Test {
         vm.roll(block.number + 7200 + 1);
 
         uint256 principalBefore = saintDurbin.principalLocked();
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // // Principal should not change
         assertEq(saintDurbin.principalLocked(), principalBefore);
@@ -250,8 +256,8 @@ contract SaintDurbinPrincipalTest is Test {
             spikedYield
         );
         vm.roll(block.number + 7200 + 2);
-
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // // Principal should increase
         assertGe(saintDurbin.principalLocked(), principalBefore);
@@ -270,11 +276,10 @@ contract SaintDurbinPrincipalTest is Test {
         );
 
         vm.prank(emergencyOperator);
-        saintDurbin.setTotalHotkeyAlpha(hugePrincipal * 10);
 
         // First transfer to detect principal
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10 + hugePrincipal);
 
         // Add small yield
         uint256 smallYield = 10e9; // 10 TAO
@@ -288,10 +293,9 @@ contract SaintDurbinPrincipalTest is Test {
         // Multiple distributions
         for (uint256 i = 0; i < 10; i++) {
             vm.roll(block.number + 7200);
-
             uint256 principalBefore = saintDurbin.principalLocked();
-
-            saintDurbin.executeTransfer();
+            vm.prank(emergencyOperator);
+            saintDurbin.executeTransfer(INITIAL_STAKE * 10 + hugePrincipal);
 
             uint256 balanceAfter = saintDurbin.getStakedBalance();
 
@@ -321,7 +325,8 @@ contract SaintDurbinPrincipalTest is Test {
         );
         vm.roll(block.number + 7200);
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Second distribution after longer period (should adjust rate accordingly)
         uint256 longerPeriodBlocks = 14400; // 2 days
@@ -335,7 +340,8 @@ contract SaintDurbinPrincipalTest is Test {
         vm.roll(block.number + longerPeriodBlocks);
 
         uint256 principalBefore = saintDurbin.principalLocked();
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Should NOT detect as principal (rate is same)
         assertEq(saintDurbin.principalLocked(), principalBefore);
@@ -351,8 +357,8 @@ contract SaintDurbinPrincipalTest is Test {
             principalPlusYield
         );
         vm.roll(block.number + shortPeriodBlocks + 1);
-
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // // Should detect principal
         assertEq(saintDurbin.principalLocked(), principalBefore);

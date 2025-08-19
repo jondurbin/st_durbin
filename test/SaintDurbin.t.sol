@@ -129,7 +129,6 @@ contract SaintDurbinTest is Test {
         );
 
         vm.prank(emergencyOperator);
-        saintDurbin.setTotalHotkeyAlpha(INITIAL_STAKE * 10);
         mockMetagraph.setEmission(netuid, validatorUid, 100e9);
 
         // Stake is already set before deployment
@@ -160,7 +159,8 @@ contract SaintDurbinTest is Test {
 
     function testCannotExecuteTransferBeforeInterval() public {
         vm.expectRevert(SaintDurbin.TransferTooSoon.selector);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(1000e9);
     }
 
     function testSuccessfulYieldDistribution() public {
@@ -178,7 +178,8 @@ contract SaintDurbinTest is Test {
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
 
         // Execute transfer
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Verify transfers
         uint256 transferCount = mockStaking.getTransferCount();
@@ -207,7 +208,8 @@ contract SaintDurbinTest is Test {
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
         // Advance blocks and execute first transfer
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Verify first transfer happened
         uint256 firstTransferCount = mockStaking.getTransferCount();
@@ -225,7 +227,8 @@ contract SaintDurbinTest is Test {
         mockMetagraph.setEmission(netuid, validatorUid, 1000e9);
 
         // Execute transfer again - should use last payment amount as fallback
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Verify second round of transfers happened
         uint256 secondTransferCount = mockStaking.getTransferCount();
@@ -257,7 +260,8 @@ contract SaintDurbinTest is Test {
         vm.roll(block.number + 7200);
 
         // Should not revert, but should not transfer anything
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Verify no transfers occurred
         assertEq(mockStaking.getTransferCount(), 0);
@@ -272,11 +276,13 @@ contract SaintDurbinTest is Test {
 
         // Execute first transfer
         vm.roll(block.number + 7200);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Try immediate second transfer
         vm.expectRevert(SaintDurbin.TransferTooSoon.selector);
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // Advance blocks and try again
         vm.roll(block.number + 7200);
@@ -285,7 +291,8 @@ contract SaintDurbinTest is Test {
         mockStaking.addYield(contractSs58Key, validatorHotkey, netuid, 500e9);
 
         // Should work now
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
     }
 
     function testEmergencyDrain() public {
@@ -373,7 +380,8 @@ contract SaintDurbinTest is Test {
         vm.roll(block.number + 7200);
 
         // Execute transfer - should emit failure events but not revert
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // No transfers should have succeeded
         assertEq(mockStaking.getTransferCount(), 0);
@@ -393,7 +401,8 @@ contract SaintDurbinTest is Test {
         vm.roll(block.number + 7200);
 
         // Execute transfer - should skip distribution
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
 
         // No transfers should have occurred
         assertEq(mockStaking.getTransferCount(), 0);
@@ -423,7 +432,8 @@ contract SaintDurbinTest is Test {
             "Transfer failed"
         ); // 1% of 1000 TAO
 
-        saintDurbin.executeTransfer();
+        vm.prank(emergencyOperator);
+        saintDurbin.executeTransfer(INITIAL_STAKE * 10);
     }
 
     function testInvalidDeploymentParameters() public {

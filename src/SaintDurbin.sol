@@ -42,7 +42,6 @@ contract SaintDurbin {
 
     // Tracking
     uint256 public principalLocked;
-    uint256 public previousBalance;
     uint256 public lastTransferBlock;
     uint256 public lastPaymentAmount;
 
@@ -108,7 +107,7 @@ contract SaintDurbin {
     error StakeMoveFailure();
     error NotEmergencyOperatorOrDrainAddress();
     error SS58KeyAlreadySet();
-    error TotalHotkeyAlphaNotSet();
+    error TotalHotkeyAlphaInvalid();
 
     // ========== Modifiers ==========
     modifier onlyEmergencyOperator() {
@@ -184,7 +183,6 @@ contract SaintDurbin {
 
         // Get initial balance and set as principal
         principalLocked = _getStakedBalanceHotkey(currentValidatorHotkey);
-        previousBalance = principalLocked;
     }
 
     // ========== Core Functions ==========
@@ -210,10 +208,12 @@ contract SaintDurbin {
      * @dev Can be called by anyone when conditions are met
      * @dev Does NOT automatically check validator status
      */
-    function executeTransfer() external nonReentrant {
+    function executeTransfer(
+        uint256 totalHotkeyAlpha
+    ) external onlyEmergencyOperator nonReentrant {
         if (!canExecuteTransfer()) revert TransferTooSoon();
 
-        if (totalHotkeyAlpha == 0) revert TotalHotkeyAlphaNotSet();
+        if (totalHotkeyAlpha == 0) revert TotalHotkeyAlphaInvalid();
 
         // Alpha of hotkey and coldkey in subnet
         uint256 currentBalance = _getStakedBalanceHotkey(
@@ -224,7 +224,6 @@ contract SaintDurbin {
         // Or stake is moved to other account
         if (currentBalance <= principalLocked) {
             lastTransferBlock = block.number;
-            previousBalance = currentBalance;
             return;
         }
 
@@ -251,7 +250,6 @@ contract SaintDurbin {
 
         if (availableYield < EXISTENTIAL_AMOUNT) {
             lastTransferBlock = block.number;
-            previousBalance = currentBalance;
             return;
         }
 
@@ -309,7 +307,6 @@ contract SaintDurbin {
         principalLocked = newBalance;
         lastTransferBlock = block.number;
         lastPaymentAmount = totalTransferred;
-        previousBalance = newBalance;
 
         emit StakeTransferred(totalTransferred, newBalance);
     }
@@ -376,7 +373,6 @@ contract SaintDurbin {
 
                 // Update principal to include the moved stake
                 principalLocked += actualMoved;
-                previousBalance = balanceAfter; // Update tracking
 
                 emit StakeAggregated(
                     hotkey,
@@ -541,7 +537,6 @@ contract SaintDurbin {
         }
 
         uint256 balanceAfter = _getStakedBalanceHotkey(bestHotkey);
-        previousBalance = balanceAfter;
         currentValidatorHotkey = bestHotkey;
         currentValidatorUid = bestUid;
         emit ValidatorSwitched(oldHotkey, bestHotkey, bestUid, reason);
@@ -614,20 +609,6 @@ contract SaintDurbin {
 
         emergencyDrainRequestedAt = 0;
         emit EmergencyDrainCancelled();
-    }
-
-    /**
-     * @notice Set the total hotkey alpha
-     * @dev Can only be called by emergency operator
-     */
-    function setTotalHotkeyAlpha(
-        uint256 _totalHotkeyAlpha
-    ) external onlyEmergencyOperator {
-        require(
-            _totalHotkeyAlpha > 0,
-            "Total hotkey alpha must be greater than 0"
-        );
-        totalHotkeyAlpha = _totalHotkeyAlpha;
     }
 
     // ========== View Functions ==========

@@ -90,7 +90,6 @@ contract SaintDurbinValidatorSwitchTest is Test {
         );
 
         vm.prank(emergencyOperator);
-        saintDurbin.setTotalHotkeyAlpha(1000000000e9);
     }
 
     function testSelectBestValidator() public {

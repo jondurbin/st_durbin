@@ -354,7 +354,7 @@ describe("SaintDurbin Live Integration Tests", () => {
 
             // Execute transfer
             try {
-                const tx = await saintDurbin.executeTransfer();
+                const tx = await saintDurbin.executeTransfer(tao(10 ** 8));
                 const receipt = await tx.wait();
 
                 // Check events
