@@ -654,20 +654,6 @@ contract SaintDurbin {
     }
 
     /**
-     * @notice Get the amount that will be transferred in the next distribution
-     * @return The next transfer amount
-     */
-    function getNextTransferAmount() external view returns (uint256) {
-        uint256 currentBalance = _getStakedBalanceHotkey(
-            currentValidatorHotkey
-        );
-        if (currentBalance <= principalLocked) {
-            return 0;
-        }
-        return currentBalance - principalLocked;
-    }
-
-    /**
      * @notice Check if transfer can be executed
      * @return True if transfer conditions are met
      */

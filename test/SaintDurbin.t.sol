@@ -353,9 +353,6 @@ contract SaintDurbinTest is Test {
         // Test getStakedBalance
         assertEq(saintDurbin.getStakedBalance(), INITIAL_STAKE + yieldAmount);
 
-        // Test getNextTransferAmount
-        assertEq(saintDurbin.getNextTransferAmount(), yieldAmount);
-
         // Test getAvailableRewards
         assertEq(saintDurbin.getAvailableRewards(), yieldAmount);
 
@@ -453,14 +450,6 @@ contract SaintDurbinTest is Test {
     }
 
     // ========== View Function Edge Cases ==========
-
-    function testGetNextTransferAmount_EdgeCase() public {
-        // Set balance below principal
-        mockStaking.setStake(contractSs58Key, validatorHotkey, netuid, 9000e9);
-
-        // Should return 0
-        assertEq(saintDurbin.getNextTransferAmount(), 0);
-    }
 
     function testBlocksUntilNextTransfer_EdgeCase() public {
         // Roll to exactly the next transfer block
