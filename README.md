@@ -1,4 +1,5 @@
 # SaintDurbin - Patron Saint of Bittensor
+
 ## Automatic Yield Distribution with Validator Management
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -94,18 +95,18 @@ test/
 
 The contract distributes yields to exactly 16 recipients with fixed proportions:
 
-| Recipient | Proportion | Percentage |
-|-----------|------------|------------|
-| Sam | 100 | 1% |
-| WSL | 100 | 1% |
-| Paper | 500 | 5% |
-| Florian | 100 | 1% |
-| 3 recipients | 100 each | 1% each |
-| 3 recipients | 300 each | 3% each |
-| 3 recipients | 1000 each | 10% each |
-| 2 recipients | 1500 each | 15% each |
-| 1 recipient | 2000 | 20% |
-| **Total** | **10,000** | **100%** |
+| Recipient    | Proportion | Percentage |
+| ------------ | ---------- | ---------- |
+| Sam          | 100        | 1%         |
+| WSL          | 100        | 1%         |
+| Paper        | 500        | 5%         |
+| Florian      | 100        | 1%         |
+| 3 recipients | 100 each   | 1% each    |
+| 3 recipients | 300 each   | 3% each    |
+| 3 recipients | 1000 each  | 10% each   |
+| 2 recipients | 1500 each  | 15% each   |
+| 1 recipient  | 2000       | 20%        |
+| **Total**    | **10,000** | **100%**   |
 
 ### 2. Yield Distribution System
 
@@ -119,14 +120,18 @@ The contract distributes yields to exactly 16 recipients with fixed proportions:
 The contract employs sophisticated algorithms to detect and protect principal:
 
 ```solidity
-// Rate-based detection
-if (currentRate > lastRewardRate * 2) {
-    // Principal addition detected
+// If current balance is less than principal locked, means the hotkey didn't get any yield
+// Or stake is moved to other account
+if (currentBalance <= principalLocked) {
+   lastTransferBlock = block.number;
+   return;
 }
 
-// Absolute detection
-if (availableYield > lastPaymentAmount * 3) {
-    // Unusual yield increase detected
+// Yield amount can't be greater than increased balance
+if (yieldEstimate > increasedBalance) {
+   availableYield = increasedBalance;
+} else {
+   availableYield = yieldEstimate;
 }
 ```
 
@@ -140,6 +145,7 @@ The contract automatically monitors and switches validators:
   - Validator becomes inactive
   - Hotkey/UID mismatch detected
 - **Selection Criteria**: Highest combination of stake and dividends
+- **Aggregate Stake**: Aggregate stake from other validators to the current validator. The purpose of the call is to consolidate stake. Each transaction just complete moveStake from one validator to current validator.
 
 ### 5. Emergency Drain Mechanism
 
@@ -150,6 +156,7 @@ Three-stage security system:
 3. **Execution**: Transfer to Polkadot multisig address
 
 **Security Features**:
+
 - Cannot be executed immediately
 - Cancellable by operator or anyone after 48 hours
 - Destination is 2/3 multisig on Polkadot side
@@ -161,29 +168,32 @@ Three-stage security system:
 
 ### Access Control
 
-| Function | Access | Description |
-|----------|--------|-------------|
-| `executeTransfer()` | Public | Anyone can trigger distribution |
-| `checkAndSwitchValidator()` | Public | Anyone can trigger validator check |
-| `requestEmergencyDrain()` | Emergency Operator | Initiate drain with timelock |
-| `executeEmergencyDrain()` | Emergency Operator | Execute after timelock |
-| `cancelEmergencyDrain()` | Operator/Public* | Cancel drain request |
+| Function                    | Access             | Description                        |
+| --------------------------- | ------------------ | ---------------------------------- |
+| `executeTransfer()`         | Public             | Anyone can trigger distribution    |
+| `checkAndSwitchValidator()` | Public             | Anyone can trigger validator check |
+| `requestEmergencyDrain()`   | Emergency Operator | Initiate drain with timelock       |
+| `executeEmergencyDrain()`   | Emergency Operator | Execute after timelock             |
+| `cancelEmergencyDrain()`    | Operator/Public\*  | Cancel drain request               |
 
-*Public can cancel after 48 hours
+\*Public can cancel after 48 hours
 
 ### Security Features
 
 1. **Reentrancy Protection**
+
    - `nonReentrant` modifier on critical functions
    - Checks-effects-interactions pattern
    - State updates before external calls
 
 2. **Input Validation**
+
    - Constructor validates all parameters
    - Proportions must sum to exactly 10,000
    - Address and hotkey validation
 
 3. **Immutability**
+
    - Recipients cannot be changed
    - Proportions are fixed
    - Core configuration is immutable
@@ -235,15 +245,20 @@ graph TD
 
 The contract uses a dual-method approach:
 
-1. **Rate Analysis**: Compares current reward rate to historical rate
-2. **Absolute Comparison**: Checks if yield is unusually high
+1. **Current Stake Comparison**: Compares current stake with principal locked
+2. **Emission Estimation Comparison**: Compares emission estimation with increased balance
 
 ```solidity
-// Simplified logic
-if (yieldRate > historicalRate * 2 || yield > lastPayment * 3) {
-    principalDetected = true;
-    lockAdditionalPrincipal();
-    useHistoricalPaymentAmount();
+if (currentBalance <= principalLocked) {
+   lastTransferBlock = block.number;
+   return;
+}
+
+// Yield amount can't be greater than increased balance
+if (yieldEstimate > increasedBalance) {
+   availableYield = increasedBalance;
+} else {
+   availableYield = yieldEstimate;
 }
 ```
 
@@ -254,10 +269,13 @@ if (yieldRate > historicalRate * 2 || yield > lastPayment * 3) {
 ### Key Functions
 
 #### Core Distribution
+
 ```solidity
 function executeTransfer() external nonReentrant
 ```
+
 Main distribution function that:
+
 - Validates timing constraints
 - Checks validator status
 - Calculates available yield
@@ -265,19 +283,23 @@ Main distribution function that:
 - Updates tracking variables
 
 #### Validator Management
+
 ```solidity
 function checkAndSwitchValidator() external
 function _checkAndSwitchValidator() internal
 function _switchToNewValidator(string memory reason) internal
 ```
+
 Manages validator selection and switching with automatic fallback.
 
 #### Emergency Controls
+
 ```solidity
 function requestEmergencyDrain() external onlyEmergencyOperator
 function executeEmergencyDrain() external onlyEmergencyOperator nonReentrant
 function cancelEmergencyDrain() external
 ```
+
 Time-locked emergency drain system with multiple safety checks.
 
 ### State Variables
@@ -298,11 +320,8 @@ uint256 public principalLocked;
 uint256 public emergencyDrainRequestedAt;
 
 // Tracking
-uint256 public previousBalance;
 uint256 public lastTransferBlock;
-uint256 public lastRewardRate;
 uint256 public lastPaymentAmount;
-uint256 public lastValidatorCheckBlock;
 ```
 
 ### Events
@@ -316,6 +335,9 @@ event ValidatorCheckFailed(string reason);
 event EmergencyDrainRequested(uint256 executionTime);
 event EmergencyDrainExecuted(bytes32 indexed drainAddress, uint256 amount);
 event TransferFailed(bytes32 indexed coldkey, uint256 amount, string reason);
+event StakeAggregated(bytes32 indexed hotkey, bytes32 indexed currentValidatorHotkey, uint256 amount);
+event SS58PublicKeySet(bytes32 indexed newKey);
+event PrincipalUpdatedAfterAggregation(uint256 amount, uint256 newPrincipal);
 ```
 
 ### Gas Optimizations
@@ -331,12 +353,12 @@ event TransferFailed(bytes32 indexed coldkey, uint256 amount, string reason);
 
 ### Test Coverage
 
-| Category | Coverage | Description |
-|----------|----------|-------------|
-| Unit Tests | 100% | All functions and branches |
-| Integration | 95% | Contract interactions |
-| Edge Cases | 90% | Boundary conditions |
-| Security | 100% | Attack vectors |
+| Category    | Coverage | Description                |
+| ----------- | -------- | -------------------------- |
+| Unit Tests  | 100%     | All functions and branches |
+| Integration | 95%      | Contract interactions      |
+| Edge Cases  | 90%      | Boundary conditions        |
+| Security    | 100%     | Attack vectors             |
 
 ### Running Tests
 
@@ -360,6 +382,7 @@ forge coverage
 ### Test Categories
 
 1. **Unit Tests** (Foundry)
+
    - Constructor validation
    - Distribution logic
    - Principal protection
@@ -367,6 +390,7 @@ forge coverage
    - Emergency mechanisms
 
 2. **Integration Tests** (JavaScript + Local Chain)
+
    - End-to-end distribution flow
    - Validator status changes
    - Script automation
@@ -398,12 +422,14 @@ myth analyze src/SaintDurbin.sol
 ### Prerequisites
 
 1. **Environment Configuration**
+
    ```bash
    cp .env.example .env
    # Edit .env with your parameters
    ```
 
 2. **Configuration File** (`script/config.json`)
+
    ```json
    {
      "emergencyOperator": "0x...",
@@ -413,7 +439,7 @@ myth analyze src/SaintDurbin.sol
      "thisSs58PublicKey": "0x...",
      "netuid": 0,
      "recipients": [
-       {"coldkey": "0x...", "proportion": 100},
+       { "coldkey": "0x...", "proportion": 100 }
        // ... 16 total recipients
      ]
    }
@@ -455,10 +481,11 @@ Automated via GitHub Actions:
 name: Daily Yield Distribution
 on:
   schedule:
-    - cron: '0 0 * * *'  # Daily at 00:00 UTC
+    - cron: "0 0 * * *" # Daily at 00:00 UTC
 ```
 
 Manual trigger:
+
 ```bash
 cd scripts
 node distribute.js
@@ -467,11 +494,13 @@ node distribute.js
 ### Validator Monitoring
 
 Check current validator:
+
 ```bash
 node check-validator.js
 ```
 
 Force validator switch:
+
 ```bash
 node check-validator.js --switch
 ```
@@ -479,6 +508,7 @@ node check-validator.js --switch
 ### Emergency Procedures
 
 1. **Initiate Drain**
+
    ```bash
    cast send $CONTRACT "requestEmergencyDrain()" \
      --private-key $EMERGENCY_KEY
@@ -495,6 +525,7 @@ node check-validator.js --switch
 ### Monitoring
 
 Key metrics to monitor:
+
 - Daily distribution success
 - Validator status changes
 - Principal amount stability
@@ -555,6 +586,7 @@ forge script script/DeploySaintDurbin.s.sol \
 ### Audit Scope
 
 **In Scope:**
+
 - `src/SaintDurbin.sol`
 - `src/interfaces/IStakingV2.sol`
 - `src/interfaces/IMetagraph.sol`
@@ -564,6 +596,7 @@ forge script script/DeploySaintDurbin.s.sol \
 - Emergency mechanisms
 
 **Out of Scope:**
+
 - Bittensor precompiles
 - External automation scripts
 - Deployment configuration
@@ -582,7 +615,6 @@ forge script script/DeploySaintDurbin.s.sol \
 2. Validator switching limited by available validators
 3. Emergency drain requires Polkadot multisig
 4. Distribution frequency limited by block interval
-
 
 ---
 
@@ -609,4 +641,4 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 ---
 
-*For detailed technical specifications and audit information, please refer to [SPEC.md](./SPEC.md)*
+_For detailed technical specifications and audit information, please refer to [SPEC.md](./SPEC.md)_
