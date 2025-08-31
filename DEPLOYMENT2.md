@@ -10,7 +10,8 @@ Install the btcli, to create both coldkey and hotkey.
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/opentensor/bittensor/master/scripts/install.sh)"
-btcli wallet
+btcli wallet new-coldkey
+btcli wallet new-hotkey
 ```
 
 Register neuron, creating the coldkey and hotkey relation
@@ -70,6 +71,7 @@ pub fn schedule_swap_coldkey(
 ```
 
 After 5 days, the coldkey swap will be executed. All funds will be transferred to contract, also the coldkey/hotkey relations.
+Note: the duration could be updated on chain. need to check before sending the extrinsic.
 
 ### 5. set the Contract's SS58 Public Key
 
@@ -79,7 +81,7 @@ get the SS58 public key from contract address
 cd scripts
 npm install  # Install dependencies if not already done
 node convert-h160-to-public-key.js $DEPLOYER_ADDRESS
-# output like
+# output like, a 32 bytes hex string
 SS58 Public Key (bytes32): 0xdbb1da614802ea83f7b0fd97279204316cdc1fb62386d44c4fb0b3489a7657c9
 ```
 
