@@ -94,12 +94,16 @@ call setThisSs58PublicKey with correct SS58_PUBLIC_KEY
      --private-key $EMERGENCY_KEY
 ```
 
-### 6 Set the regular task like executeTransfer, aggregateStake in cronjob according difference frequency. It is also important to get the data stakedBalance, principleLocked, we can know the status of contract.
+### 6 Run the regular task like executeTransfer, aggregateStake according difference frequency. It is also important to query the data stakedBalance, principleLocked, we can know the status of contract.
+
+For executeTransfer, we need to know the totalHotkeyAlpha before calling it. the value is from storage
 
 ```bash
-# Run every day
-0 0 * * * /path/to/command
+# parameters are current hotkey and netuid
+api.query.SubtensorModule.TotalHotkeyAlpha.getValue
 ```
+
+For aggregateStake, we need to iterate all uids in subnet and get how many stake from current contract address. Based on the data, we can decide if to run aggregateStake.
 
 ## Important Notes
 
